@@ -177,3 +177,74 @@ def set_active_conversation_id(config_file: str, new_conv_id: str):
 
     with open(config_file, "w", encoding="utf-8") as f:
         f.writelines(lines)
+
+def get_conversation_detail(conv_id: str):
+    """Returns detailed object with title, turns and metadata."""
+    turns = get_conversation_turns(conv_id)
+    title = turns[0]["user"] if (turns and turns[0].get("user")) else f"Conversación {conv_id[:8]}"
+    return {
+        "id": conv_id,
+        "title": title,
+        "turns": turns
+    }
+
+def reset_active_session():
+    """Clears or resets active conversation session."""
+    import uuid
+    new_id = str(uuid.uuid4())
+    proj_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    cfg_file = os.path.join(proj_dir, "config", "config.env")
+    set_active_conversation_id(cfg_file, new_id)
+    return new_id
+
+def delete_conversation(conv_id: str) -> bool:
+    """Deletes the brain transcript directory for a conversation."""
+    import shutil
+    conv_dir = os.path.join(BRAIN_DIR, conv_id)
+    if os.path.isdir(conv_dir):
+        try:
+            shutil.rmtree(conv_dir)
+            return True
+        except Exception:
+            return False
+    return False
+
+def export_conversation_markdown(conv_id: str) -> str:
+    """Exports conversation turns as a formatted Markdown text."""
+    detail = get_conversation_detail(conv_id)
+    md = [f"# Conversación Jarvis: {detail['title']}\n"]
+    md.append(f"- **ID de Sesión**: `{conv_id}`")
+    md.append(f"- **Total de Turnos**: {len(detail['turns'])}\n---\n")
+
+    for i, turn in enumerate(detail["turns"], 1):
+        time_tag = f" ({turn['time']})" if turn.get("time") else ""
+        md.append(f"### Turno {i}{time_tag}")
+        md.append(f"**🗣️ Usuario:**\n{turn.get('user', '')}\n")
+
+        actions = turn.get("actions", [])
+        if actions:
+            md.append("**⚙️ Herramientas ejecutadas:**")
+            for act in actions:
+                md.append(f"- `{act['name']}`: {act.get('summary') or act.get('cmd')}")
+            md.append("")
+
+        reply = turn.get("reply", "")
+        if reply:
+            md.append(f"**🤖 Jarvis:**\n{reply}\n")
+        md.append("---\n")
+
+    return "\n".join(md)
+
+def set_live_idle(reason: str = ""):
+    """Sets LIVE_STATUS_FILE to IDLE."""
+    live_file = "/tmp/nobara_assistant_live.json"
+    try:
+        import time
+        with open(live_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "status": "IDLE",
+                "current_action": reason or "En reposo",
+                "updated_at": time.time()
+            }, f)
+    except Exception:
+        pass

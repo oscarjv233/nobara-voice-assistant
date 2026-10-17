@@ -19,10 +19,13 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QGroupBox,
     QMessageBox, QFrame, QTabWidget, QListWidget, QListWidgetItem,
-    QTextBrowser, QSplitter, QProgressBar, QScrollArea
+    QTextBrowser, QSplitter, QProgressBar, QScrollArea, QLineEdit,
+    QMenu, QToolButton
 )
-from PySide6.QtCore import Qt, Signal, QObject, QTimer
-from PySide6.QtGui import QFont, QIcon, QPixmap
+from PySide6.QtCore import Qt, Signal, QObject, QTimer, QPoint
+from PySide6.QtGui import QFont, QIcon, QPixmap, QAction, QCursor
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
+import html
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS_DIR = os.path.join(PROJECT_DIR, "assets")
@@ -156,6 +159,33 @@ def regenerate_procesando_audio(voice_model, speaker):
         p.communicate(cue_text)
     except Exception as e:
         sys.stderr.write(f"Error regenerating procesando cue: {e}\n")
+
+def format_text_as_html(text: str) -> str:
+    if not text:
+        return ""
+    import html
+    import re
+    escaped = html.escape(text)
+    # Code blocks: ```...```
+    def replace_code_block(m):
+        code_content = m.group(1).strip()
+        return f"<div class='code-box'><pre><code>{code_content}</code></pre></div>"
+    escaped = re.sub(r'```(?:[a-zA-Z0-9_\-]+)?\n?(.*?)```', replace_code_block, escaped, flags=re.DOTALL)
+    # Inline code: `...`
+    escaped = re.sub(r'`([^`\n]+)`', r'<code class="inline-code">\1</code>', escaped)
+    # Bold: **...**
+    escaped = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', escaped)
+    # Italics: *...*
+    escaped = re.sub(r'(?<!\*)\*([^*]+)\*(?!\*)', r'<i>\1</i>', escaped)
+    # Line breaks
+    escaped = escaped.replace("\n", "<br/>")
+    # Clean up breaks inside code blocks
+    escaped = re.sub(
+        r'<div class=\'code-box\'><pre><code>(.*?)</code></pre></div>',
+        lambda m: "<div class='code-box'><pre><code>" + m.group(1).replace("<br/>", "\n") + "</code></pre></div>",
+        escaped
+    )
+    return escaped
 
 class SettingsWindow(QMainWindow):
     def __init__(self):
@@ -532,17 +562,101 @@ class SettingsWindow(QMainWindow):
     # -------------------------------------------------------------------------
     def init_tab_history(self):
         layout = QVBoxLayout(self.tab_history)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(12)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
-        # 1. LIVE ACTIVITY CARD
+        # 1. TOP HEADER FRAME (Neural Brain & Session Controls)
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background: rgba(20, 26, 38, 0.75);
+                border: 1px solid rgba(0, 240, 255, 0.25);
+                border-radius: 10px;
+                padding: 10px;
+            }
+        """)
+        header_layout = QVBoxLayout(header_frame)
+        header_layout.setContentsMargins(12, 10, 12, 10)
+        header_layout.setSpacing(8)
+
+        # Top row: Title + Active Session badge + Buttons
+        top_row = QHBoxLayout()
+        top_row.setSpacing(10)
+
+        lbl_head_title = QLabel("🧠 Memoria Neural & Sesiones AGY")
+        f_title = QFont()
+        f_title.setPointSize(13)
+        f_title.setBold(True)
+        lbl_head_title.setFont(f_title)
+        lbl_head_title.setStyleSheet("color: #00f0ff;")
+        top_row.addWidget(lbl_head_title)
+
+        top_row.addSpacing(8)
+
+        lbl_act_pre = QLabel("Sesión Activa:")
+        lbl_act_pre.setStyleSheet("color: #94a3b8; font-size: 11px; font-weight: bold;")
+        top_row.addWidget(lbl_act_pre)
+
+        self.lbl_active_id = QLabel(self.format_active_session_label())
+        self.lbl_active_id.setStyleSheet("background: rgba(0, 240, 255, 0.12); color: #38bdf8; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; padding: 3px 8px; font-family: monospace; font-size: 11px;")
+        top_row.addWidget(self.lbl_active_id)
+
+        btn_copy_act = QToolButton()
+        btn_copy_act.setText("📋")
+        btn_copy_act.setToolTip("Copiar ID de la sesión activa")
+        btn_copy_act.setStyleSheet("border: none; background: transparent; padding: 2px;")
+        btn_copy_act.clicked.connect(self.copy_active_id)
+        top_row.addWidget(btn_copy_act)
+
+        top_row.addStretch()
+
+        self.btn_new_conv = QPushButton("➕ Nueva Sesión")
+        self.btn_new_conv.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0284c7, stop:1 #00f0ff);
+                color: #04111d;
+                font-weight: bold;
+                padding: 6px 14px;
+                border-radius: 6px;
+                border: none;
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0369a1, stop:1 #38bdf8);
+            }
+        """)
+        self.btn_new_conv.clicked.connect(self.start_new_conversation)
+        top_row.addWidget(self.btn_new_conv)
+
+        btn_refresh = QPushButton("🔄 Actualizar")
+        btn_refresh.setStyleSheet("background: rgba(255, 255, 255, 0.08); color: white; padding: 6px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15);")
+        btn_refresh.clicked.connect(self.refresh_conversation_list)
+        top_row.addWidget(btn_refresh)
+
+        header_layout.addLayout(top_row)
+
+        # Bottom row: Continuous checkbox + info
+        bot_row = QHBoxLayout()
+        self.chk_continuous = QCheckBox("Modo Conversación Continua (Mantener memoria y contexto activo)")
+        self.chk_continuous.setChecked(self.config.get("CONTINUOUS_CONVERSATION", "true").lower() == "true")
+        self.chk_continuous.toggled.connect(self.on_continuous_toggled)
+        bot_row.addWidget(self.chk_continuous)
+        bot_row.addStretch()
+
+        lbl_hint = QLabel("💡 Consejo: Di por voz 'nueva conversación' para empezar de cero.")
+        lbl_hint.setStyleSheet("color: #64748b; font-size: 11px;")
+        bot_row.addWidget(lbl_hint)
+
+        header_layout.addLayout(bot_row)
+        layout.addWidget(header_frame)
+
+        # 2. LIVE ACTIVITY CARD (Collapsible - Only visible while executing)
         self.card_live = QFrame()
         self.card_live.setStyleSheet("""
             QFrame {
-                background: rgba(30, 35, 45, 0.45);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background: rgba(30, 24, 18, 0.9);
+                border: 1px solid rgba(243, 156, 18, 0.6);
                 border-radius: 8px;
-                padding: 10px;
+                padding: 8px;
             }
         """)
         live_layout = QVBoxLayout(self.card_live)
@@ -550,8 +664,8 @@ class SettingsWindow(QMainWindow):
         live_layout.setSpacing(6)
 
         live_title_row = QHBoxLayout()
-        self.lbl_live_title = QLabel("⚡ Monitor en Tiempo Real")
-        self.lbl_live_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #00f0ff;")
+        self.lbl_live_title = QLabel("⚡ Tarea en curso")
+        self.lbl_live_title.setStyleSheet("font-weight: bold; font-size: 12px; color: #f39c12;")
         live_title_row.addWidget(self.lbl_live_title)
 
         self.lbl_live_time = QLabel("")
@@ -559,22 +673,22 @@ class SettingsWindow(QMainWindow):
         live_title_row.addWidget(self.lbl_live_time)
         live_title_row.addStretch()
 
-        self.btn_cancel_task = QPushButton("🛑 Cancelar Tarea")
+        self.btn_cancel_task = QPushButton("🛑 Detener Tarea")
         self.btn_cancel_task.setEnabled(False)
-        self.btn_cancel_task.setStyleSheet("background-color: #c94a4a; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px;")
+        self.btn_cancel_task.setStyleSheet("background-color: #ef4444; color: white; font-weight: bold; padding: 4px 10px; border-radius: 4px; border: none;")
         self.btn_cancel_task.clicked.connect(self.cancel_running_task)
         live_title_row.addWidget(self.btn_cancel_task)
         live_layout.addLayout(live_title_row)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 0)
-        self.progress_bar.setFixedHeight(5)
-        self.progress_bar.setVisible(False)
+        self.progress_bar.setFixedHeight(4)
+        self.progress_bar.setStyleSheet("QProgressBar::chunk { background-color: #f39c12; }")
         live_layout.addWidget(self.progress_bar)
 
-        self.lbl_live_action = QLabel("Jarvis en reposo. Pulsa tu atajo o di 'Hey Jarvis' para pedir cualquier tarea.")
+        self.lbl_live_action = QLabel("")
         self.lbl_live_action.setWordWrap(True)
-        self.lbl_live_action.setStyleSheet("color: #aaa; font-style: italic;")
+        self.lbl_live_action.setStyleSheet("color: #f1f5f9; font-size: 12px;")
         live_layout.addWidget(self.lbl_live_action)
 
         self.lbl_live_detail = QLabel("")
@@ -583,96 +697,149 @@ class SettingsWindow(QMainWindow):
         self.lbl_live_detail.setVisible(False)
         live_layout.addWidget(self.lbl_live_detail)
 
+        self.card_live.setVisible(False) # Hidden while idle
         layout.addWidget(self.card_live)
 
-        # 2. SESSION CONTINUITY CONTROLS
-        session_group = QGroupBox("Gestión de Contexto de Conversación")
-        session_layout = QVBoxLayout(session_group)
-        session_layout.setSpacing(8)
-
-        toggle_row = QHBoxLayout()
-        self.chk_continuous = QCheckBox("Modo Conversación Continua (Mantener memoria y contexto entre peticiones)")
-        self.chk_continuous.setChecked(self.config.get("CONTINUOUS_CONVERSATION", "true").lower() == "true")
-        self.chk_continuous.toggled.connect(self.on_continuous_toggled)
-        toggle_row.addWidget(self.chk_continuous)
-        toggle_row.addStretch()
-
-        self.btn_new_conv = QPushButton("➕ Iniciar Nueva Conversación")
-        self.btn_new_conv.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 5px 12px; border-radius: 4px;")
-        self.btn_new_conv.clicked.connect(self.start_new_conversation)
-        toggle_row.addWidget(self.btn_new_conv)
-        session_layout.addLayout(toggle_row)
-
-        active_row = QHBoxLayout()
-        lbl_active_prefix = QLabel("Sesión actual en uso:")
-        lbl_active_prefix.setStyleSheet("font-weight: bold;")
-        self.lbl_active_id = QLabel(self.format_active_session_label())
-        self.lbl_active_id.setStyleSheet("color: #00f0ff; font-family: monospace;")
-        active_row.addWidget(lbl_active_prefix)
-        active_row.addWidget(self.lbl_active_id)
-        active_row.addStretch()
-        session_layout.addLayout(active_row)
-
-        lbl_hint = QLabel("💡 Consejo: También puedes decir por voz 'nueva conversación' o 'empezar de cero' para reiniciar el contexto.")
-        lbl_hint.setStyleSheet("color: #888; font-size: 11px;")
-        session_layout.addWidget(lbl_hint)
-
-        layout.addWidget(session_group)
-
         # 3. SPLIT PANEL: CONVERSATIONS LIST & TURN-BY-TURN VIEWER
-        history_group = QGroupBox("Historial de Conversaciones Guardadas")
-        history_layout = QVBoxLayout(history_group)
-
         splitter = QSplitter(Qt.Horizontal)
+        splitter.setStyleSheet("""
+            QSplitter::handle {
+                background: rgba(255, 255, 255, 0.08);
+                width: 3px;
+                border-radius: 1px;
+            }
+            QSplitter::handle:hover {
+                background: #00f0ff;
+            }
+        """)
 
+        # LEFT PANEL: SEARCH & SESSION LIST
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(6)
 
-        list_header = QHBoxLayout()
-        list_header.addWidget(QLabel("Conversaciones:"))
-        list_header.addStretch()
-        btn_refresh = QPushButton("🔄 Actualizar")
-        btn_refresh.setFixedHeight(26)
-        btn_refresh.clicked.connect(self.refresh_conversation_list)
-        list_header.addWidget(btn_refresh)
-        left_layout.addLayout(list_header)
+        self.txt_search = QLineEdit()
+        self.txt_search.setPlaceholderText("🔍 Buscar en historial...")
+        self.txt_search.setClearButtonEnabled(True)
+        self.txt_search.setStyleSheet("""
+            QLineEdit {
+                background: rgba(15, 20, 28, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                padding: 7px 10px;
+                color: #ffffff;
+                font-size: 12px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #00f0ff;
+                background: rgba(18, 24, 34, 0.85);
+            }
+        """)
+        self.txt_search.textChanged.connect(self.on_search_text_changed)
+        left_layout.addWidget(self.txt_search)
+
+        self.lbl_conv_count = QLabel("0 sesiones registradas")
+        self.lbl_conv_count.setStyleSheet("color: #64748b; font-size: 11px; padding-left: 2px;")
+        left_layout.addWidget(self.lbl_conv_count)
 
         self.conv_list = QListWidget()
+        self.conv_list.setStyleSheet("""
+            QListWidget {
+                background: rgba(13, 17, 24, 0.65);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 4px;
+                outline: none;
+            }
+            QListWidget::item {
+                background: rgba(255, 255, 255, 0.03);
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 6px;
+                padding: 8px;
+                margin: 3px 2px;
+                color: #e2e8f0;
+            }
+            QListWidget::item:hover {
+                background: rgba(0, 240, 255, 0.08);
+                border: 1px solid rgba(0, 240, 255, 0.3);
+            }
+            QListWidget::item:selected {
+                background: rgba(0, 240, 255, 0.18);
+                border: 1px solid #00f0ff;
+                color: #ffffff;
+            }
+        """)
         self.conv_list.itemClicked.connect(self.on_conversation_selected)
+        self.conv_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.conv_list.customContextMenuRequested.connect(self.on_conv_list_context_menu)
         left_layout.addWidget(self.conv_list)
 
         splitter.addWidget(left_widget)
 
+        # RIGHT PANEL: CONVERSATION INSPECTOR & STREAM
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(6)
 
         viewer_header = QHBoxLayout()
-        self.lbl_viewer_title = QLabel("Detalle de la Conversación")
-        self.lbl_viewer_title.setStyleSheet("font-weight: bold;")
-        viewer_header.addWidget(self.lbl_viewer_title)
-        viewer_header.addStretch()
+        viewer_header.setSpacing(8)
 
-        self.btn_resume_conv = QPushButton("▶️ Retomar esta conversación")
+        title_col = QVBoxLayout()
+        title_col.setSpacing(2)
+        self.lbl_viewer_title = QLabel("Detalle de la Conversación")
+        f_vtitle = QFont()
+        f_vtitle.setPointSize(12)
+        f_vtitle.setBold(True)
+        self.lbl_viewer_title.setFont(f_vtitle)
+        self.lbl_viewer_title.setStyleSheet("color: #ffffff;")
+        title_col.addWidget(self.lbl_viewer_title)
+
+        self.lbl_viewer_meta = QLabel("Selecciona una sesión de la lista")
+        self.lbl_viewer_meta.setStyleSheet("color: #64748b; font-size: 11px;")
+        title_col.addWidget(self.lbl_viewer_meta)
+        viewer_header.addLayout(title_col, 1)
+
+        self.btn_resume_conv = QPushButton("⭐ Fijar como Activa")
         self.btn_resume_conv.setEnabled(False)
+        self.btn_resume_conv.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 5px 12px; border-radius: 6px; border: none;")
         self.btn_resume_conv.clicked.connect(self.resume_selected_conversation)
         viewer_header.addWidget(self.btn_resume_conv)
+
+        self.btn_copy_markdown = QPushButton("📋 Copiar Markdown")
+        self.btn_copy_markdown.setEnabled(False)
+        self.btn_copy_markdown.setStyleSheet("background: rgba(255, 255, 255, 0.08); color: white; padding: 5px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.15);")
+        self.btn_copy_markdown.clicked.connect(self.copy_selected_conversation_markdown)
+        viewer_header.addWidget(self.btn_copy_markdown)
+
+        self.btn_delete_conv = QPushButton("🗑️ Eliminar")
+        self.btn_delete_conv.setEnabled(False)
+        self.btn_delete_conv.setStyleSheet("background-color: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 5px 10px; border-radius: 6px;")
+        self.btn_delete_conv.clicked.connect(self.delete_selected_conversation)
+        viewer_header.addWidget(self.btn_delete_conv)
+
         right_layout.addLayout(viewer_header)
 
         self.detail_browser = QTextBrowser()
         self.detail_browser.setOpenExternalLinks(True)
-        self.detail_browser.setPlaceholderText("Selecciona una conversación de la lista para ver los turnos y comandos ejecutados...")
+        self.detail_browser.setStyleSheet("""
+            QTextBrowser {
+                background: #0b0f17;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                padding: 10px;
+                color: #e2e8f0;
+            }
+        """)
+        self.render_empty_conversation_view()
         right_layout.addWidget(self.detail_browser)
 
         splitter.addWidget(right_widget)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 2)
 
-        history_layout.addWidget(splitter)
-        layout.addWidget(history_group)
+        layout.addWidget(splitter, 1)
 
     # -------------------------------------------------------------------------
     # HELPERS & SLOTS
@@ -719,67 +886,158 @@ class SettingsWindow(QMainWindow):
     def on_continuous_toggled(self, checked):
         self.config["CONTINUOUS_CONVERSATION"] = "true" if checked else "false"
 
+    def copy_active_id(self):
+        active_id = self.config.get("ACTIVE_CONVERSATION_ID", "")
+        if active_id:
+            QApplication.clipboard().setText(active_id)
+            QMessageBox.information(self, "ID Copiado", f"ID de sesión copiado al portapapeles:\n{active_id}")
+        else:
+            QMessageBox.information(self, "Sin Sesión Activa", "No hay ninguna sesión activa en este momento.")
+
     def start_new_conversation(self):
         new_id = conversations.reset_active_session()
         self.config["ACTIVE_CONVERSATION_ID"] = new_id
+        save_config(self.config)
         self.lbl_active_id.setText(self.format_active_session_label())
+        self.refresh_conversation_list()
+        self.render_empty_conversation_view()
+        self.btn_resume_conv.setEnabled(False)
+        self.btn_copy_markdown.setEnabled(False)
+        self.btn_delete_conv.setEnabled(False)
+        self.lbl_viewer_title.setText("Nueva Sesión Iniciada")
+        self.lbl_viewer_meta.setText(f"ID: {new_id} (Listo para nueva orden)")
         QMessageBox.information(
             self,
-            "Nueva Conversación",
-            "Se ha reiniciado el contexto. La próxima orden empezará una sesión limpia con Jarvis."
+            "Nueva Sesión Limpia",
+            f"Se ha iniciado una nueva conversación limpia ({new_id[:8]}).\nLa próxima orden comenzará con contexto nuevo."
         )
 
     def refresh_conversation_list(self):
-        self.conv_list.clear()
         self.all_conversations = conversations.get_all_conversations()
+        self.filter_conversations(self.txt_search.text())
+
+    def on_search_text_changed(self, text):
+        self.filter_conversations(text)
+
+    def filter_conversations(self, query=""):
+        self.conv_list.clear()
+        query = query.strip().lower()
         active_id = self.config.get("ACTIVE_CONVERSATION_ID", "")
 
+        matches = []
         for conv in self.all_conversations:
             cid = conv.get("id", "")
             title = conv.get("title", "")
+            last_reply = conv.get("last_reply", "")
+            if not query or query in title.lower() or query in last_reply.lower() or query in cid.lower():
+                matches.append(conv)
+
+        self.lbl_conv_count.setText(f"{len(matches)} de {len(self.all_conversations)} sesiones registradas")
+
+        for conv in matches:
+            cid = conv.get("id", "")
+            title = conv.get("title", "Conversación")
             date_str = conv.get("date_str") or conv.get("updated_at", "")
             turn_count = conv.get("turn_count", 0)
+            last_reply = conv.get("last_reply", "")
 
-            item_text = f"💬 {title}\n📅 {date_str}  ·  {turn_count} turnos"
-            if cid == active_id:
-                item_text = f"⭐ [ACTIVA] {item_text}"
+            # Truncate
+            disp_title = title if len(title) <= 45 else title[:42] + "..."
+            disp_reply = last_reply if len(last_reply) <= 55 else last_reply[:52] + "..."
+
+            is_active = (cid == active_id)
+            active_badge = "  ⭐ [ACTIVA]" if is_active else ""
+
+            item_text = f"📅 {date_str}  ·  🎯 {turn_count}t{active_badge}\n💬 {disp_title}"
+            if disp_reply:
+                item_text += f"\n🤖 {disp_reply}"
 
             item = QListWidgetItem(item_text)
             item.setData(Qt.UserRole, cid)
+            if is_active:
+                f = item.font()
+                f.setBold(True)
+                item.setFont(f)
             self.conv_list.addItem(item)
+
+    def render_empty_conversation_view(self):
+        html_content = """
+        <div style='text-align: center; margin-top: 90px; font-family: sans-serif; color: #94a3b8;'>
+            <div style='font-size: 52px; margin-bottom: 12px;'>⚡</div>
+            <h2 style='color: #00f0ff; margin-bottom: 8px; font-weight: bold;'>Memoria Neural Jarvis</h2>
+            <p style='font-size: 13px; max-width: 480px; margin: 0 auto; line-height: 1.6; color: #64748b;'>
+                Selecciona cualquier sesión del panel lateral para inspeccionar sus peticiones de voz, comandos ejecutados y respuestas de la IA.<br/><br/>
+                Puedes pulsar <b>⭐ Fijar como Activa</b> para retomar el contexto en cualquier momento.
+            </p>
+        </div>
+        """
+        self.detail_browser.setHtml(html_content)
 
     def on_conversation_selected(self, item):
         cid = item.data(Qt.UserRole)
-        self.btn_resume_conv.setEnabled(True)
+        self.btn_copy_markdown.setEnabled(True)
+        self.btn_delete_conv.setEnabled(True)
+
+        is_active = (cid == self.config.get("ACTIVE_CONVERSATION_ID", ""))
+        if is_active:
+            self.btn_resume_conv.setText("✅ Sesión Activa")
+            self.btn_resume_conv.setEnabled(False)
+            self.btn_resume_conv.setStyleSheet("background-color: rgba(0, 240, 255, 0.2); color: #00f0ff; border: 1px solid #00f0ff; font-weight: bold; padding: 5px 12px; border-radius: 6px;")
+        else:
+            self.btn_resume_conv.setText("⭐ Fijar como Activa")
+            self.btn_resume_conv.setEnabled(True)
+            self.btn_resume_conv.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold; padding: 5px 12px; border-radius: 6px; border: none;")
+
         detail = conversations.get_conversation_detail(cid)
-        if not detail:
-            self.detail_browser.setHtml("<p><i>No se pudo leer la transcripción.</i></p>")
+        turns = detail.get("turns", [])
+
+        self.lbl_viewer_title.setText(f"💬 {detail.get('title', 'Conversación')}")
+        self.lbl_viewer_meta.setText(f"ID: {cid}  ·  🎯 {len(turns)} turnos registrados")
+
+        if not turns:
+            self.detail_browser.setHtml("<p style='color: #888; font-style: italic; padding: 20px;'>No hay turnos registrados en esta sesión.</p>")
             return
 
-        html = f"""
-        <style>
-            body {{ font-family: sans-serif; font-size: 13px; color: palette(text); }}
-            .bubble-user {{ background: #2b4562; padding: 8px 12px; border-radius: 8px; margin: 6px 0; }}
-            .bubble-assistant {{ background: #232d3a; padding: 8px 12px; border-radius: 8px; margin: 6px 0 14px 0; border-left: 3px solid #00f0ff; }}
-            .tool-call {{ background: #161c24; font-family: monospace; font-size: 11px; padding: 6px; border-radius: 4px; color: #5bc0de; margin: 4px 0; }}
-        </style>
-        <h3>💬 {detail['title']}</h3>
-        <p style='color: #888; font-size: 11px;'>ID: {cid} | Turnos: {len(detail['turns'])}</p>
-        <hr/>
-        """
-        for turn in detail["turns"]:
+        html_body = [
+            "<style>",
+            "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; color: #e2e8f0; background-color: #0b0f17; padding: 10px; margin: 0; }",
+            ".user-card { background: linear-gradient(135deg, #1e293b 0%, #172033 100%); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 10px 14px; margin: 10px 0 6px 0; }",
+            ".user-header { color: #38bdf8; font-size: 11px; font-weight: bold; margin-bottom: 4px; }",
+            ".user-text { font-size: 13px; color: #f8fafc; font-weight: 500; line-height: 1.4; }",
+            ".tool-chip { background: #080d14; border-left: 3px solid #00f0ff; border-radius: 4px; padding: 6px 10px; margin: 4px 0 4px 14px; font-family: monospace; font-size: 11px; color: #67e8f9; }",
+            ".jarvis-card { background: linear-gradient(135deg, #0e1e2e 0%, #0c1724 100%); border: 1px solid rgba(0, 240, 255, 0.3); border-left: 4px solid #00f0ff; border-radius: 10px; padding: 12px 16px; margin: 6px 0 16px 0; }",
+            ".jarvis-header { color: #00f0ff; font-size: 11px; font-weight: bold; margin-bottom: 6px; }",
+            ".jarvis-text { font-size: 13px; color: #f1f5f9; line-height: 1.5; }",
+            ".code-box { background: #06090e; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 8px; margin: 6px 0; overflow-x: auto; }",
+            "pre, code { font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; font-size: 12px; color: #a5f3fc; }",
+            ".inline-code { background: rgba(0, 240, 255, 0.12); color: #67e8f9; padding: 2px 5px; border-radius: 4px; font-family: monospace; }",
+            "b { color: #ffffff; }",
+            "</style>"
+        ]
+
+        for turn in turns:
             user_msg = turn.get("user", "")
-            assistant_msg = turn.get("assistant", "")
-            tool_calls = turn.get("tool_calls", [])
+            reply_msg = turn.get("reply") or turn.get("assistant", "")
+            actions = turn.get("actions") or turn.get("tool_calls", [])
+            time_str = turn.get("time", "")
+            time_badge = f"<span style='color: #64748b; font-weight: normal; margin-left: 8px;'>🕒 {time_str}</span>" if time_str else ""
 
-            html += f"<div class='bubble-user'><b>🗣️ Tú:</b> {user_msg}</div>"
-            if tool_calls:
-                for tc in tool_calls:
-                    html += f"<div class='tool-call'>⚙️ <b>{tc['name']}</b>: {tc['summary']}</div>"
-            if assistant_msg:
-                html += f"<div class='bubble-assistant'><b>🤖 Jarvis:</b> {assistant_msg}</div>"
+            # 1. User Bubble
+            html_body.append(f"<div class='user-card'><div class='user-header'>👤 TÚ {time_badge}</div><div class='user-text'>{html.escape(user_msg)}</div></div>")
 
-        self.detail_browser.setHtml(html)
+            # 2. Tool executions
+            if actions:
+                for act in actions:
+                    act_name = html.escape(str(act.get("name", "herramienta")))
+                    act_sum = html.escape(str(act.get("summary") or act.get("cmd") or ""))
+                    html_body.append(f"<div class='tool-chip'>⚙️ <b>{act_name}</b>: {act_sum}</div>")
+
+            # 3. Jarvis Reply
+            if reply_msg:
+                formatted_reply = format_text_as_html(reply_msg)
+                html_body.append(f"<div class='jarvis-card'><div class='jarvis-header'>⚡ JARVIS AI</div><div class='jarvis-text'>{formatted_reply}</div></div>")
+
+        self.detail_browser.setHtml("".join(html_body))
 
     def resume_selected_conversation(self):
         item = self.conv_list.currentItem()
@@ -792,7 +1050,75 @@ class SettingsWindow(QMainWindow):
         save_config(self.config)
         self.lbl_active_id.setText(self.format_active_session_label())
         self.refresh_conversation_list()
+        self.btn_resume_conv.setText("✅ Sesión Activa")
+        self.btn_resume_conv.setEnabled(False)
+        self.btn_resume_conv.setStyleSheet("background-color: rgba(0, 240, 255, 0.2); color: #00f0ff; border: 1px solid #00f0ff; font-weight: bold; padding: 5px 12px; border-radius: 6px;")
         QMessageBox.information(self, "Conversación Retomada", f"Se ha fijado la sesión {cid[:8]} como activa para Jarvis.")
+
+    def copy_selected_conversation_markdown(self):
+        item = self.conv_list.currentItem()
+        if not item:
+            return
+        cid = item.data(Qt.UserRole)
+        md = conversations.export_conversation_markdown(cid)
+        QApplication.clipboard().setText(md)
+        self.btn_copy_markdown.setText("✅ ¡Copiado!")
+        QTimer.singleShot(2000, lambda: self.btn_copy_markdown.setText("📋 Copiar Markdown"))
+
+    def delete_selected_conversation(self):
+        item = self.conv_list.currentItem()
+        if not item:
+            return
+        cid = item.data(Qt.UserRole)
+        ret = QMessageBox.question(
+            self,
+            "Eliminar Conversación",
+            f"¿Estás seguro de que deseas eliminar permanentemente la transcripción de la sesión {cid[:8]}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if ret == QMessageBox.Yes:
+            if conversations.delete_conversation(cid):
+                if self.config.get("ACTIVE_CONVERSATION_ID") == cid:
+                    new_id = conversations.reset_active_session()
+                    self.config["ACTIVE_CONVERSATION_ID"] = new_id
+                    save_config(self.config)
+                    self.lbl_active_id.setText(self.format_active_session_label())
+                self.refresh_conversation_list()
+                self.render_empty_conversation_view()
+                self.lbl_viewer_title.setText("Detalle de la Conversación")
+                self.lbl_viewer_meta.setText("Sesión eliminada.")
+                self.btn_resume_conv.setEnabled(False)
+                self.btn_copy_markdown.setEnabled(False)
+                self.btn_delete_conv.setEnabled(False)
+                QMessageBox.information(self, "Eliminada", "La conversación ha sido eliminada.")
+            else:
+                QMessageBox.warning(self, "Error", "No se pudo eliminar la carpeta de la conversación.")
+
+    def on_conv_list_context_menu(self, point):
+        item = self.conv_list.itemAt(point)
+        if not item:
+            return
+        cid = item.data(Qt.UserRole)
+        menu = QMenu(self)
+        act_resume = menu.addAction("⭐ Fijar como Sesión Activa")
+        act_copy_id = menu.addAction("📋 Copiar ID de Sesión")
+        act_copy_md = menu.addAction("📝 Copiar Transcripción (Markdown)")
+        menu.addSeparator()
+        act_delete = menu.addAction("🗑️ Eliminar Sesión")
+
+        action = menu.exec(self.conv_list.mapToGlobal(point))
+        if action == act_resume:
+            self.conv_list.setCurrentItem(item)
+            self.resume_selected_conversation()
+        elif action == act_copy_id:
+            QApplication.clipboard().setText(cid)
+        elif action == act_copy_md:
+            md = conversations.export_conversation_markdown(cid)
+            QApplication.clipboard().setText(md)
+        elif action == act_delete:
+            self.conv_list.setCurrentItem(item)
+            self.delete_selected_conversation()
 
     def poll_live_status(self):
         if not os.path.exists(LIVE_STATUS_FILE):
@@ -819,12 +1145,13 @@ class SettingsWindow(QMainWindow):
             self.lbl_global_status.setText("⚡ EJECUTANDO")
             self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 5px 14px; border-radius: 6px; background: rgba(230, 160, 40, 0.2); color: #f39c12; font-size: 12px;")
 
+            self.card_live.setVisible(True)
             self.lbl_live_title.setText(f"⚡ Tarea en curso (hace {elapsed}s)")
             self.progress_bar.setVisible(True)
             self.btn_cancel_task.setEnabled(True)
 
             self.lbl_live_action.setText(f"🗣️ Petición: \"{user_text}\"\n⚙️ Estado: {action}")
-            self.lbl_live_action.setStyleSheet("color: palette(text); font-weight: 500;")
+            self.lbl_live_action.setStyleSheet("color: #f1f5f9; font-weight: 500;")
 
             if tool_detail:
                 self.lbl_live_detail.setText(f"$ {tool_detail}")
@@ -837,21 +1164,10 @@ class SettingsWindow(QMainWindow):
             self.lbl_global_status.setText("🟢 En reposo")
             self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 5px 14px; border-radius: 6px; background: rgba(80, 200, 120, 0.15); color: #50c878; font-size: 12px;")
 
-            self.lbl_live_title.setText("⚡ Monitor en Tiempo Real")
+            self.card_live.setVisible(False)
             self.progress_bar.setVisible(False)
             self.btn_cancel_task.setEnabled(False)
             self.lbl_live_detail.setVisible(False)
-
-            last_resp = data.get("last_response", "")
-            last_action = data.get("last_action", "")
-            last_user = data.get("last_user_text", "")
-
-            if last_resp:
-                self.lbl_live_action.setText(f"✅ Última tarea ({last_action}):\n\"{last_user}\" ➔ {last_resp}")
-                self.lbl_live_action.setStyleSheet("color: #7bc992; font-size: 11px;")
-            else:
-                self.lbl_live_action.setText("Jarvis en reposo. Pulsa tu atajo o di 'Hey Jarvis' para pedir cualquier tarea.")
-                self.lbl_live_action.setStyleSheet("color: #aaa; font-style: italic;")
 
     def cancel_running_task(self):
         pid = self.current_running_pid
@@ -979,11 +1295,47 @@ class SettingsWindow(QMainWindow):
 
         QMessageBox.information(self, "Configuración Guardada", "Todos los ajustes de Jarvis se han aplicado correctamente.")
 
+SINGLE_INSTANCE_SERVER = "nobara_jarvis_settings_single_instance"
+
 def main():
     app = QApplication.instance() or QApplication(sys.argv)
     if os.path.exists(APP_ICON):
         app.setWindowIcon(QIcon(APP_ICON))
+
+    # Single-instance enforcement: check if an instance is already open
+    client_socket = QLocalSocket()
+    client_socket.connectToServer(SINGLE_INSTANCE_SERVER)
+    if client_socket.waitForConnected(350):
+        # An existing instance is running: signal it to wake up and exit this launcher
+        client_socket.write(b"WAKEUP\n")
+        client_socket.waitForBytesWritten(350)
+        client_socket.waitForReadyRead(350)
+        sys.exit(0)
+
+    # Primary instance: remove stale socket and start listening
+    QLocalServer.removeServer(SINGLE_INSTANCE_SERVER)
+    server = QLocalServer()
+    server.listen(SINGLE_INSTANCE_SERVER)
+
     window = SettingsWindow()
+
+    def handle_incoming_ipc():
+        conn = server.nextPendingConnection()
+        if conn:
+            # Wake up and raise window immediately
+            window.setWindowState(window.windowState() & ~Qt.WindowState.WindowMinimized | Qt.WindowState.WindowActive)
+            window.showNormal()
+            window.raise_()
+            window.activateWindow()
+            if window.windowHandle():
+                window.windowHandle().requestActivate()
+            try:
+                conn.write(b"ACK\n")
+                conn.flush()
+            except Exception:
+                pass
+
+    server.newConnection.connect(handle_incoming_ipc)
     window.show()
     sys.exit(app.exec())
 

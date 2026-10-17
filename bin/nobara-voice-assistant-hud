@@ -10,14 +10,29 @@ export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_CURRENT_DESKTOP="KDE"
 export KDE_FULL_SESSION=true
 
-PIDFILE="/tmp/nobara_assistant_hud.pid"
-if [ -f "$PIDFILE" ]; then
-    PID=$(cat "$PIDFILE" 2>/dev/null)
-    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-        echo "HUD is already running (PID $PID)."
+case "$1" in
+    stop)
+        pkill -f "overlay_hud.py" 2>/dev/null || true
+        rm -f "$PIDFILE"
+        echo "HUD stopped."
         exit 0
-    fi
-fi
-
-echo $$ > "$PIDFILE"
-exec python3 "$PROJECT_DIR/src/overlay_hud.py" "$@"
+        ;;
+    status)
+        if pgrep -f "overlay_hud.py" >/dev/null 2>&1; then
+            echo "RUNNING"
+            exit 0
+        else
+            echo "STOPPED"
+            exit 1
+        fi
+        ;;
+    *)
+        # Start daemon if not running
+        if pgrep -f "overlay_hud.py" >/dev/null 2>&1; then
+            echo "HUD is already running."
+            exit 0
+        fi
+        echo $$ > "$PIDFILE"
+        exec python3 "$PROJECT_DIR/src/overlay_hud.py" "$@"
+        ;;
+esac

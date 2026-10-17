@@ -15,6 +15,7 @@ import sys
 import os
 import json
 import time
+import fcntl
 
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar
@@ -23,6 +24,7 @@ from PySide6.QtCore import Qt, QTimer, QPoint
 from PySide6.QtGui import QFont, QColor, QPainter, QBrush, QPen
 
 HUD_STATE_FILE = "/tmp/nobara_assistant_hud.json"
+HUD_LOCK_FILE = "/tmp/nobara_assistant_hud.lock"
 PID_FILE = "/tmp/nobara_assistant.pid"
 LIVE_STATUS_FILE = "/tmp/nobara_assistant_live.json"
 
@@ -225,6 +227,13 @@ class FloatingHudWindow(QWidget):
             self.hide_timer.start(2500)
 
 def main():
+    try:
+        lock_fd = open(HUD_LOCK_FILE, "w")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, BlockingIOError, PermissionError):
+        # Another HUD overlay instance is already running!
+        sys.exit(0)
+
     app = QApplication.instance() or QApplication(sys.argv)
     hud = FloatingHudWindow()
     sys.exit(app.exec())
