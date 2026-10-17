@@ -1,10 +1,17 @@
-# 🎙️ Nobara / Linux AI Voice Assistant — Código Abierto (MIT)
+# ⚡ Jarvis AI — Nobara Linux AI Voice Assistant & Control Panel (MIT)
 
 Asistente de inteligencia artificial personal, 100% local en reconocimiento y síntesis de voz, integrado a nivel de sistema operativo en **Nobara Linux** (KDE Plasma 6 + Wayland + PipeWire) impulsado por el CLI de **Antigravity (`agy`)**.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Nobara%20%7C%20KDE-blue.svg)]()
+[![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Nobara%20%7C%20KDE%20Plasma%206-blue.svg)]()
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10+-brightgreen.svg)]()
+[![Branding: Jarvis AI](https://img.shields.io/badge/Assistant-Jarvis%20AI-00f0ff.svg)]()
+
+<p align="center">
+  <img src="assets/nobara-jarvis-128.png" width="100" alt="Jarvis AI Arc Reactor Icon"/>
+  <br/>
+  <i>Identidad visual personalizada inspirada en el reactor Arc holográfico para KDE Plasma 6 y Wayland.</i>
+</p>
 
 ---
 
@@ -83,6 +90,10 @@ nobara-voice-assistant/
 ├── install.sh                         # Instalador automático para cualquier máquina
 ├── LICENSE                            # Licencia libre MIT
 ├── README.md                          # Documentación completa
+├── assets/                            # Recursos gráficos e identidades visuales
+│   ├── nobara-jarvis.svg              # Vector SVG del reactor Arc holográfico
+│   ├── nobara-jarvis-*.png            # Iconos rasterizados (48, 64, 128, 256) para FreeDesktop
+│   └── generate_icons.py              # Generador automático de assets PNG
 ├── bin/
 │   ├── nobara-voice-assistant         # Script ejecutable principal (gestión de estados toggle)
 │   ├── nobara-voice-assistant-settings# Lanzador de la aplicación gráfica de ajustes
@@ -158,11 +169,14 @@ nobara-voice-assistant/
 
 ### E. Panel Gráfico de Control e Historial (PySide6 / Qt6)
 - Implementado en [src/settings_gui.py](file:///home/oscar/nobara-voice-assistant/src/settings_gui.py).
-- **Pestaña 1 (Ajustes de Voz):** Habilitar/deshabilitar, selector de voces Piper, volumen independiente con preview, modelos Whisper, Auto-Stop VAD, Modo Gaming (Audio Ducking), Wake Word manos libres y activación del HUD flotante.
-- **Pestaña 2 (Historial y Sesiones):**
-  - **Monitor en Vivo:** Muestra si el asistente está en reposo o ejecutando una tarea (tiempo transcurrido, comando ejecutado y botón para cancelar la tarea si se quedara pillada).
-  - **Gestor de Sesión:** Checkbox para modo continuo, visualizador de sesión activa y botón `➕ Iniciar Nueva Conversación`.
-  - **Historial Completo:** Lista de conversaciones guardadas con visor detallado estilo chat (turnos, comandos ejecutados y respuestas). Botón `▶️ Retomar esta conversación`.
+- **Instancia Única (Single-Instance IPC via QLocalServer):** Al hacer clic en el icono de Jarvis en el panel o lanzarlo desde el menú, se comunica por un socket local con la app en ejecución, desminimizando y trayendo la ventana al frente en KDE Plasma 6 (`requestActivate()`) sin crear ventanas duplicadas.
+- **Pestaña 1 (Ajustes de Voz & Hardware):** Tarjetas amplias con scroll fluido (`QScrollArea`), selector de voces Piper con botón de prueba, control de volumen de flujo independiente, modelos Whisper, Auto-Stop VAD con calibración de segundos, interruptor de Audio Ducking, sensibilidad de Wake Word y conmutador de cápsula HUD.
+- **Pestaña 2 (Memoria Neural y Sesiones AGY):**
+  - **Cabecera Glassmorphic:** Visualizador del ID de sesión activa en badge cian con botón para copiarlo (`📋`), switch de memoria de contexto continuo y botón de acción rápida `➕ Nueva Sesión Limpia`.
+  - **Monitor en Vivo Plegable:** Permanece completamente oculto en reposo para dejar el 100% de la pantalla libre, desplegándose automáticamente cuando Jarvis ejecuta una tarea para mostrar progreso y el botón `🛑 Detener Tarea`.
+  - **Buscador Reactivo:** Campo `🔍 Buscar en historial...` que filtra conversaciones instantáneamente por palabra clave o comando.
+  - **Drawer de Sesiones:** Tarjetas con fecha, contador de turnos (`🎯 N turnos`), etiqueta `⭐ [ACTIVA]` y menú contextual con clic derecho (retomar, copiar ID, exportar Markdown o borrar).
+  - **Visor Estilo Chat Moderno:** Burbujas diferenciadas para el usuario (`👤 TÚ`), terminales monospace para herramientas del sistema ejecutadas (`⚙️ pactl`, `run_command`) y respuestas formateadas de `⚡ JARVIS AI` con soporte para Markdown, bloques de código con sintaxis resaltada y botones de acción rápida.
 
 ### F. Comandos Multimedia y Sistema Instantáneos ("Fast Path" en <30ms) ⚡
 - Implementado en [src/fast_path.py](file:///home/oscar/nobara-voice-assistant/src/fast_path.py).
@@ -175,8 +189,8 @@ nobara-voice-assistant/
 
 ### G. Icono en la Bandeja del Sistema (KDE Plasma 6 System Tray) 🎛️
 - Implementado en [src/tray.py](file:///home/oscar/nobara-voice-assistant/src/tray.py).
-- Se integra en la barra junto al reloj con iconos dinámicos según el estado:
-  - 🟢 **Verde**: En reposo (Idle).
+- Se integra en la barra junto al reloj con el icono Arc-Reactor y estados visuales:
+  - 🟢 **Normal / Verde**: En reposo (Idle).
   - 🔴 **Rojo**: Grabando voz del micrófono (Recording).
   - 🔵 **Azul**: Procesando o ejecutando orden (Thinking).
 - **Menú rápido con clic derecho**: Hablar/grabar, iniciar nueva conversación, alternar idioma (Español/English), conmutar voz TTS, conmutar Modo Gaming, silenciar audio y abrir panel de ajustes.
@@ -186,10 +200,13 @@ nobara-voice-assistant/
 - Implementado en [src/speak.py](file:///home/oscar/nobara-voice-assistant/src/speak.py).
 - Cuando el asistente comienza a hablar, **reduce automáticamente el volumen de tu juego o Discord al 45%** mediante PipeWire y, al terminar la frase, restaura suavemente el volumen original al 100%. Nunca te perderás una respuesta aunque estés jugando.
 
-### I. Activación Manos Libres (Wake Word) 🗣️
+### I. Activación Manos Libres (Wake Word "Hey Jarvis") 🗣️
 - Implementado en [src/wakeword.py](file:///home/oscar/nobara-voice-assistant/src/wakeword.py).
 - Impulsado por **openWakeWord** con modelos ONNX 100% locales (*"Hey Jarvis"*, *"Alexa"*, *"Hey Mycroft"*).
-- Consume menos del 1% de CPU, no envía audio a internet y cuenta con protección contra auto-activación mientras el asistente habla.
+- **Carga de Modelo Exclusivo:** Carga únicamente la red neuronal seleccionada en memoria, reduciendo el consumo de CPU a menos del 1.2% (ideal para no impactar FPS en juegos).
+- **Ganancia Digital Adaptativa:** Multiplica automáticamente la amplitud de micrófonos USB de bajo volumen para asegurar una activación precisa sin tener que gritar.
+- **Deslizador de Sensibilidad:** Ajustable entre Alta (0.20), Normal (0.30) y Estricta (0.45).
+- Emite un tono acústico inmediato (*bell chime*) al activarse para avisar que Jarvis está escuchando.
 
 ### J. Cápsula Flotante en Pantalla (Overlay HUD / Dynamic Island) 🔮
 - Implementado en [src/overlay_hud.py](file:///home/oscar/nobara-voice-assistant/src/overlay_hud.py).
@@ -198,6 +215,7 @@ nobara-voice-assistant/
   - Indicador de estado neon mientras procesa.
   - Muestra la transcripción y el resultado de la tarea.
   - **No roba el foco del teclado ni del ratón (`Qt.WindowDoesNotAcceptFocus`)**, permitiéndote seguir jugando o escribiendo sin interrupciones.
+  - **Cerrojo Mutex Kernel (`fcntl.flock`):** Garantiza que nunca se rendericen ventanas HUD duplicadas en pantalla.
 
 ### K. Botón de Pánico y Silenciado Inmediato 🛑
 - Ejecutable dedicado: `nobara-voice-assistant-silence` (atajo rápido de escritorio disponible).
@@ -260,6 +278,15 @@ En sistemas en inglés (Nobara KDE Plasma 6):
 4. **Reemplazo de Notificación en KDE:**
    - *Problema:* Se generaban múltiples burbujas y una barra de cuenta atrás generaba prisa al usuario.
    - *Solución:* Se utiliza `notify-send -p` y `notify-send -r <ID> -t 0` para tener una única notificación persistente que muta según el estado.
+5. **Instancia Única en KDE Plasma 6 / Wayland (IPC Socket):**
+   - *Problema:* Al pulsar repetidamente el icono de la app en la barra o en el lanzador, se creaban ventanas duplicadas.
+   - *Solución:* Implementación de `QLocalServer` y `QLocalSocket`. La nueva llamada despierta a la ventana existente con `showNormal()`, `raise_()`, `activateWindow()` y `windowHandle().requestActivate()`, saliendo inmediatamente sin abrir clones.
+6. **Prevención de Ventanas Flotantes Duplicadas (HUD Overlay Mutex):**
+   - *Problema:* Al recargar ajustes o iniciar el HUD por distintas vías, podían aparecer dos cápsulas visuales solapadas.
+   - *Solución:* Cerrojo a nivel de kernel con `fcntl.flock` no bloqueante en `/tmp/nobara_assistant_hud.lock`.
+7. **Baja Amplitud y Mapeo en Redes de Wake Word (openWakeWord):**
+   - *Problema:* Micrófonos USB con baja ganancia entregaban muestras débiles que openWakeWord no detectaba, y los nombres de claves devueltos por ONNX incluían sufijos de versión (`hey_jarvis_v0.1`) que rompían la comparación estricta.
+   - *Solución:* Ganancia adaptativa en tiempo real por software, coincidencia por palabra clave normalizada y carga de modelo dedicada reduciendo CPU a <1.2%.
 
 ---
 
