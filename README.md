@@ -13,7 +13,7 @@ Asistente de inteligencia artificial personal, 100% local en reconocimiento y s√
 Si descargas o clonas este proyecto en un equipo nuevo:
 
 ```bash
-git clone https://github.com/tu-usuario/nobara-voice-assistant.git
+git clone https://github.com/oscarjv233/nobara-voice-assistant.git
 cd nobara-voice-assistant
 ./install.sh
 ```
