@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Nobara AI Voice Assistant - Configuration & Control Panel
+Nobara Jarvis AI Voice Assistant - Configuration & Control Panel
 Built with PySide6 for native KDE Plasma 6 / Wayland integration.
 Features:
-- Tab 1: Voice & Audio Settings (Piper TTS, Volume, Whisper STT, Mic Diagnostics).
+- Tab 1: Voice & Audio Settings (Piper TTS, Volume, Gaming Mode, Wake Word, HUD, VAD, Whisper).
 - Tab 2: Live Activity Monitor & Conversation History (Real-time task tracking,
          conversation continuity management, turn-by-turn chat viewer, task canceler).
 """
@@ -19,12 +19,14 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QSlider, QCheckBox, QComboBox, QPushButton, QGroupBox,
     QMessageBox, QFrame, QTabWidget, QListWidget, QListWidgetItem,
-    QTextBrowser, QSplitter, QProgressBar
+    QTextBrowser, QSplitter, QProgressBar, QScrollArea
 )
 from PySide6.QtCore import Qt, Signal, QObject, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon, QPixmap
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(PROJECT_DIR, "assets")
+APP_ICON = os.path.join(ASSETS_DIR, "nobara-jarvis.png")
 CONFIG_FILE = os.path.join(PROJECT_DIR, "config", "config.env")
 SPEAK_SCRIPT = os.path.join(PROJECT_DIR, "src", "speak.py")
 TRANSCRIBE_SCRIPT = os.path.join(PROJECT_DIR, "src", "transcribe.py")
@@ -98,6 +100,7 @@ def load_config():
         "AUDIO_DUCKING": "false",
         "WAKE_WORD_ENABLED": "false",
         "WAKE_WORD_MODEL": "hey_jarvis",
+        "WAKE_WORD_THRESHOLD": "0.30",
         "OVERLAY_HUD_ENABLED": "true",
         "AGY_BIN": os.path.expanduser("~/.local/bin/agy")
     }
@@ -133,6 +136,7 @@ def save_config(config):
         f'AUDIO_DUCKING={config.get("AUDIO_DUCKING", "false")}',
         f'WAKE_WORD_ENABLED={config.get("WAKE_WORD_ENABLED", "false")}',
         f'WAKE_WORD_MODEL="{config.get("WAKE_WORD_MODEL", "hey_jarvis")}"',
+        f'WAKE_WORD_THRESHOLD={config.get("WAKE_WORD_THRESHOLD", "0.30")}',
         f'OVERLAY_HUD_ENABLED={config.get("OVERLAY_HUD_ENABLED", "true")}',
         ""
     ]
@@ -156,9 +160,12 @@ def regenerate_procesando_audio(voice_model, speaker):
 class SettingsWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Asistente de Voz Nobara - Panel de Control & Historial")
-        self.resize(780, 720)
-        self.setMinimumSize(680, 580)
+        self.setWindowTitle("Jarvis AI — Panel de Control & Historial (Nobara Linux)")
+        self.resize(850, 780)
+        self.setMinimumSize(720, 600)
+        if os.path.exists(APP_ICON):
+            self.setWindowIcon(QIcon(APP_ICON))
+
         self.config = load_config()
 
         self.signals = WorkerSignals()
@@ -184,23 +191,46 @@ class SettingsWindow(QMainWindow):
         main_layout.setContentsMargins(16, 16, 16, 16)
         main_layout.setSpacing(12)
 
-        # Top Header
+        # Top Header with App Icon and Branding
         top_header = QHBoxLayout()
-        title_label = QLabel("🎙️ Asistente de Voz Nobara AI")
+        top_header.setSpacing(12)
+
+        if os.path.exists(APP_ICON):
+            lbl_icon = QLabel()
+            lbl_icon.setPixmap(QPixmap(APP_ICON).scaled(38, 38, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            top_header.addWidget(lbl_icon)
+
+        title_label = QLabel("⚡ Jarvis AI — Nobara Linux")
         title_font = QFont()
-        title_font.setPointSize(15)
+        title_font.setPointSize(16)
         title_font.setBold(True)
         title_label.setFont(title_font)
+        title_label.setStyleSheet("color: #00f0ff; font-family: sans-serif;")
         top_header.addWidget(title_label)
         top_header.addStretch()
 
         self.lbl_global_status = QLabel("🟢 En reposo")
-        self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 4px 10px; border-radius: 4px; background: rgba(80, 200, 120, 0.15); color: #50c878;")
+        self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 5px 14px; border-radius: 6px; background: rgba(80, 200, 120, 0.15); color: #50c878; font-size: 12px;")
         top_header.addWidget(self.lbl_global_status)
         main_layout.addLayout(top_header)
 
         # Tabs
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                background: rgba(20, 24, 32, 0.4);
+            }
+            QTabBar::tab {
+                padding: 8px 20px;
+                font-weight: bold;
+                border-top-left-radius: 6px;
+                border-top-right-radius: 6px;
+                margin-right: 4px;
+            }
+        """)
+
         self.tab_history = QWidget()
         self.tab_audio = QWidget()
 
@@ -208,18 +238,21 @@ class SettingsWindow(QMainWindow):
         self.init_tab_history()
         self.init_tab_audio()
 
+        self.tabs.addTab(self.tab_audio, "⚙️ Ajustes de Voz & Jarvis")
         self.tabs.addTab(self.tab_history, "💬 Historial y Sesiones AGY")
-        self.tabs.addTab(self.tab_audio, "⚙️ Voz y Reconocimiento")
 
         main_layout.addWidget(self.tabs, 1)
 
         # Global Bottom Bar
         bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(4, 4, 4, 4)
+
         self.btn_save_global = QPushButton("💾 Guardar Ajustes")
-        self.btn_save_global.setStyleSheet("background-color: #2b7bb9; color: white; font-weight: bold; padding: 8px 18px;")
+        self.btn_save_global.setStyleSheet("background-color: #2b7bb9; color: white; font-weight: bold; padding: 9px 22px; border-radius: 6px; font-size: 13px;")
         self.btn_save_global.clicked.connect(self.save_settings)
 
         self.btn_close = QPushButton("Cerrar")
+        self.btn_close.setStyleSheet("padding: 9px 18px; border-radius: 6px;")
         self.btn_close.clicked.connect(self.close)
 
         bottom_layout.addStretch()
@@ -228,19 +261,286 @@ class SettingsWindow(QMainWindow):
         main_layout.addLayout(bottom_layout)
 
     # -------------------------------------------------------------------------
-    # TAB 1: HISTORY & SESSIONS
+    # TAB 1: AUDIO, VOICE, GAMING & JARVIS SETTINGS (Scrollable, Clean Cards)
+    # -------------------------------------------------------------------------
+    def init_tab_audio(self):
+        tab_layout = QVBoxLayout(self.tab_audio)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setStyleSheet("QScrollArea { background: transparent; }")
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("""
+            QWidget { background: transparent; }
+            QGroupBox {
+                font-weight: bold;
+                font-size: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 8px;
+                margin-top: 10px;
+                padding: 16px 14px 14px 14px;
+                background: rgba(30, 35, 45, 0.35);
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                subcontrol-position: top left;
+                padding: 0 8px;
+                color: #00e5ff;
+            }
+        """)
+
+        layout = QVBoxLayout(scroll_content)
+        layout.setContentsMargins(18, 14, 18, 16)
+        layout.setSpacing(14)
+
+        # CARD 1: ESTADO DEL ASISTENTE & IDIOMA
+        card_main = QGroupBox("Estado del Asistente e Idioma")
+        card_main_layout = QVBoxLayout(card_main)
+        card_main_layout.setSpacing(10)
+
+        self.chk_enabled = QCheckBox("Habilitar Asistente de Voz Jarvis")
+        font_chk = QFont()
+        font_chk.setBold(True)
+        self.chk_enabled.setFont(font_chk)
+        self.chk_enabled.setChecked(self.config.get("ENABLED", "true").lower() == "true")
+        card_main_layout.addWidget(self.chk_enabled)
+
+        lang_row = QHBoxLayout()
+        lang_label = QLabel("Idioma principal (Reconocimiento y Respuestas):")
+        self.cmb_lang = QComboBox()
+        self.cmb_lang.addItem("🇪🇸 Español (Spanish)", "es")
+        self.cmb_lang.addItem("🇺🇸 English (Inglés)", "en")
+        cur_lang = self.config.get("ASSISTANT_LANGUAGE", "es")
+        idx_lang = self.cmb_lang.findData(cur_lang)
+        if idx_lang >= 0:
+            self.cmb_lang.setCurrentIndex(idx_lang)
+        self.cmb_lang.currentIndexChanged.connect(self.on_language_changed)
+
+        lang_row.addWidget(lang_label)
+        lang_row.addWidget(self.cmb_lang, 1)
+        card_main_layout.addLayout(lang_row)
+
+        layout.addWidget(card_main)
+
+        # CARD 2: VOZ Y VOLUMEN (PIPER NEURAL TTS)
+        card_voice = QGroupBox("Voz y Síntesis (Piper Neural TTS)")
+        card_voice_layout = QVBoxLayout(card_voice)
+        card_voice_layout.setSpacing(10)
+
+        voice_row = QHBoxLayout()
+        voice_label = QLabel("Voz del Asistente:")
+        self.cmb_voice = QComboBox()
+        for idx, v in enumerate(AVAILABLE_VOICES):
+            self.cmb_voice.addItem(v["label"], (v["model"], v["speaker"]))
+            if v["model"] == self.config.get("VOICE_MODEL") and v["speaker"] == self.config.get("VOICE_SPEAKER", ""):
+                self.cmb_voice.setCurrentIndex(idx)
+
+        voice_row.addWidget(voice_label)
+        voice_row.addWidget(self.cmb_voice, 1)
+        card_voice_layout.addLayout(voice_row)
+
+        vol_header = QHBoxLayout()
+        vol_label = QLabel("Volumen del habla (Flujo independiente de PipeWire):")
+        self.vol_value_label = QLabel()
+        self.vol_value_label.setStyleSheet("font-weight: bold; color: #00f0ff;")
+        vol_header.addWidget(vol_label)
+        vol_header.addStretch()
+        vol_header.addWidget(self.vol_value_label)
+        card_voice_layout.addLayout(vol_header)
+
+        slider_layout = QHBoxLayout()
+        self.vol_slider = QSlider(Qt.Horizontal)
+        self.vol_slider.setMinimum(5)
+        self.vol_slider.setMaximum(100)
+        current_vol = int(float(self.config.get("TTS_VOLUME", "0.35")) * 100)
+        self.vol_slider.setValue(current_vol)
+        self.vol_value_label.setText(f"{current_vol}%")
+        self.vol_slider.valueChanged.connect(self.on_volume_changed)
+
+        self.btn_test_voice = QPushButton("🔊 Probar Voz")
+        self.btn_test_voice.clicked.connect(self.test_voice)
+
+        slider_layout.addWidget(self.vol_slider)
+        slider_layout.addWidget(self.btn_test_voice)
+        card_voice_layout.addLayout(slider_layout)
+
+        self.chk_voice_reply = QCheckBox("Responder hablando con voz sintetizada")
+        self.chk_voice_reply.setChecked(self.config.get("ENABLE_VOICE_REPLY", "true").lower() == "true")
+        card_voice_layout.addWidget(self.chk_voice_reply)
+
+        self.chk_processing_cue = QCheckBox("Aviso de voz inmediato 'Procesando...' al cortar")
+        self.chk_processing_cue.setChecked(self.config.get("ENABLE_PROCESSING_VOICE_CUE", "true").lower() == "true")
+        card_voice_layout.addWidget(self.chk_processing_cue)
+
+        layout.addWidget(card_voice)
+
+        # CARD 3: MODO GAMING & VISUALIZACIÓN NOBARA
+        card_gaming = QGroupBox("Modo Gaming y Rendimiento (Nobara Linux)")
+        card_gaming_layout = QVBoxLayout(card_gaming)
+        card_gaming_layout.setSpacing(10)
+
+        self.chk_ducking = QCheckBox("🎮 Audio Ducking: Atenuar música/juego al 45% mientras Jarvis habla")
+        self.chk_ducking.setChecked(self.config.get("AUDIO_DUCKING", "false").lower() == "true")
+        card_gaming_layout.addWidget(self.chk_ducking)
+
+        self.chk_hud = QCheckBox("🔮 Cápsula Flotante (Overlay HUD / Dynamic Island en pantalla)")
+        self.chk_hud.setChecked(self.config.get("OVERLAY_HUD_ENABLED", "true").lower() == "true")
+        card_gaming_layout.addWidget(self.chk_hud)
+
+        lbl_hud_desc = QLabel("La cápsula flotante muestra ondas de audio y estado sin robar el foco del teclado ni minimizar tus juegos.")
+        lbl_hud_desc.setStyleSheet("color: #888; font-size: 11px;")
+        card_gaming_layout.addWidget(lbl_hud_desc)
+
+        layout.addWidget(card_gaming)
+
+        # CARD 4: ACTIVACIÓN MANOS LIBRES (WAKE WORD: "JARVIS")
+        card_wake = QGroupBox("Activación Manos Libres (Wake Word: 'Jarvis')")
+        card_wake_layout = QVBoxLayout(card_wake)
+        card_wake_layout.setSpacing(10)
+
+        self.chk_wakeword = QCheckBox("🗣️ Habilitar palabra de activación continua en segundo plano")
+        self.chk_wakeword.setChecked(self.config.get("WAKE_WORD_ENABLED", "false").lower() == "true")
+        self.chk_wakeword.toggled.connect(self.on_wakeword_toggled)
+        card_wake_layout.addWidget(self.chk_wakeword)
+
+        self.wake_container = QWidget()
+        wake_cont_layout = QVBoxLayout(self.wake_container)
+        wake_cont_layout.setContentsMargins(0, 0, 0, 0)
+        wake_cont_layout.setSpacing(8)
+
+        wake_model_row = QHBoxLayout()
+        wake_model_row.addWidget(QLabel("Palabra para llamar al asistente:"))
+        self.cmb_wakeword = QComboBox()
+        self.cmb_wakeword.addItem("⚡ Jarvis / Hey Jarvis (Recomendado)", "hey_jarvis")
+        self.cmb_wakeword.addItem("Alexa", "alexa")
+        self.cmb_wakeword.addItem("Hey Mycroft", "hey_mycroft")
+        cur_wake = self.config.get("WAKE_WORD_MODEL", "hey_jarvis")
+        idx_wake = self.cmb_wakeword.findData(cur_wake)
+        if idx_wake >= 0:
+            self.cmb_wakeword.setCurrentIndex(idx_wake)
+
+        wake_model_row.addWidget(self.cmb_wakeword, 1)
+        wake_cont_layout.addLayout(wake_model_row)
+
+        sens_header = QHBoxLayout()
+        sens_label = QLabel("Sensibilidad de detección (Ganancia adaptativa activada):")
+        self.lbl_sens_val = QLabel()
+        self.lbl_sens_val.setStyleSheet("font-weight: bold; color: #00f0ff;")
+        sens_header.addWidget(sens_label)
+        sens_header.addStretch()
+        sens_header.addWidget(self.lbl_sens_val)
+        wake_cont_layout.addLayout(sens_header)
+
+        sens_slider_row = QHBoxLayout()
+        self.slider_sens = QSlider(Qt.Horizontal)
+        self.slider_sens.setMinimum(15)  # 0.15 (Muy sensible)
+        self.slider_sens.setMaximum(55)  # 0.55 (Estricto)
+        cur_thresh = float(self.config.get("WAKE_WORD_THRESHOLD", "0.30"))
+        slider_init = int(round(cur_thresh * 100))
+        self.slider_sens.setValue(slider_init)
+        self.update_sens_label(slider_init)
+        self.slider_sens.valueChanged.connect(self.update_sens_label)
+        sens_slider_row.addWidget(self.slider_sens)
+        wake_cont_layout.addLayout(sens_slider_row)
+
+        card_wake_layout.addWidget(self.wake_container)
+        self.wake_container.setEnabled(self.chk_wakeword.isChecked())
+
+        lbl_wake_priv = QLabel("🔒 Procesamiento 100% local con openWakeWord y ONNX. Ganancia digital adaptativa activada para detectar tu voz con claridad sin enviar nada a internet.")
+        lbl_wake_priv.setStyleSheet("color: #7bc992; font-size: 11px;")
+        lbl_wake_priv.setWordWrap(True)
+        card_wake_layout.addWidget(lbl_wake_priv)
+
+        layout.addWidget(card_wake)
+
+        # CARD 5: RECONOCIMIENTO & CORTE AUTOMÁTICO (WHISPER & VAD)
+        card_vad = QGroupBox("Reconocimiento Local y Fin de Frase (Whisper & Auto-Stop VAD)")
+        card_vad_layout = QVBoxLayout(card_vad)
+        card_vad_layout.setSpacing(10)
+
+        whisper_row = QHBoxLayout()
+        whisper_row.addWidget(QLabel("Modelo de transcripción Whisper:"))
+        self.cmb_model = QComboBox()
+        self.cmb_model.addItem("base (Ultra rápido ~0.15s, recomendado)", "base")
+        self.cmb_model.addItem("small (Mayor precisión en frases largas ~0.4s)", "small")
+        idx_model = self.cmb_model.findData(self.config.get("WHISPER_MODEL", "base"))
+        if idx_model >= 0:
+            self.cmb_model.setCurrentIndex(idx_model)
+        whisper_row.addWidget(self.cmb_model, 1)
+        card_vad_layout.addLayout(whisper_row)
+
+        self.chk_autostop = QCheckBox("Habilitar detección de silencio inteligente (Auto-Stop VAD)")
+        self.chk_autostop.setChecked(self.config.get("AUTO_STOP_SILENCE", "false").lower() == "true")
+        self.chk_autostop.toggled.connect(self.on_autostop_toggled)
+        card_vad_layout.addWidget(self.chk_autostop)
+
+        self.silence_container = QWidget()
+        silence_layout = QVBoxLayout(self.silence_container)
+        silence_layout.setContentsMargins(0, 0, 0, 0)
+        silence_layout.setSpacing(4)
+
+        silence_header = QHBoxLayout()
+        silence_label = QLabel("Pausa de silencio requerida para enviar:")
+        self.silence_value_label = QLabel()
+        self.silence_value_label.setStyleSheet("font-weight: bold; color: #00f0ff;")
+        silence_header.addWidget(silence_label)
+        silence_header.addStretch()
+        silence_header.addWidget(self.silence_value_label)
+        silence_layout.addLayout(silence_header)
+
+        silence_slider_layout = QHBoxLayout()
+        self.silence_slider = QSlider(Qt.Horizontal)
+        self.silence_slider.setMinimum(8)
+        self.silence_slider.setMaximum(25)
+        cur_silence = float(self.config.get("SILENCE_DURATION", "1.2"))
+        slider_val = int(round(cur_silence * 10))
+        self.silence_slider.setValue(slider_val)
+        self.silence_value_label.setText(f"{slider_val / 10.0:.1f} s")
+        self.silence_slider.valueChanged.connect(self.on_silence_slider_changed)
+        silence_slider_layout.addWidget(self.silence_slider)
+        silence_layout.addLayout(silence_slider_layout)
+
+        card_vad_layout.addWidget(self.silence_container)
+        self.silence_container.setEnabled(self.chk_autostop.isChecked())
+
+        layout.addWidget(card_vad)
+
+        # CARD 6: DIAGNÓSTICO DE MICRÓFONO
+        card_mic = QGroupBox("Diagnóstico de Micrófono")
+        card_mic_layout = QVBoxLayout(card_mic)
+
+        self.btn_test_mic = QPushButton("🎙️ Probar Micrófono (Habla durante 3 segundos)")
+        self.btn_test_mic.setStyleSheet("padding: 8px 14px; font-weight: bold;")
+        self.btn_test_mic.clicked.connect(self.start_mic_test)
+        card_mic_layout.addWidget(self.btn_test_mic)
+
+        self.lbl_mic_result = QLabel("Pulsa el botón, di cualquier frase y verás en directo qué entiende Whisper.")
+        self.lbl_mic_result.setStyleSheet("color: #888; font-style: italic;")
+        self.lbl_mic_result.setWordWrap(True)
+        card_mic_layout.addWidget(self.lbl_mic_result)
+
+        layout.addWidget(card_mic)
+
+        scroll.setWidget(scroll_content)
+        tab_layout.addWidget(scroll)
+
+    # -------------------------------------------------------------------------
+    # TAB 2: HISTORY & SESSIONS
     # -------------------------------------------------------------------------
     def init_tab_history(self):
         layout = QVBoxLayout(self.tab_history)
-        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(12)
 
-        # 1. LIVE ACTIVITY CARD (Real-time Task Monitor)
+        # 1. LIVE ACTIVITY CARD
         self.card_live = QFrame()
         self.card_live.setStyleSheet("""
             QFrame {
-                background: palette(window);
-                border: 1px solid palette(mid);
+                background: rgba(30, 35, 45, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 8px;
                 padding: 10px;
             }
@@ -251,7 +551,7 @@ class SettingsWindow(QMainWindow):
 
         live_title_row = QHBoxLayout()
         self.lbl_live_title = QLabel("⚡ Monitor en Tiempo Real")
-        self.lbl_live_title.setStyleSheet("font-weight: bold; font-size: 13px;")
+        self.lbl_live_title.setStyleSheet("font-weight: bold; font-size: 13px; color: #00f0ff;")
         live_title_row.addWidget(self.lbl_live_title)
 
         self.lbl_live_time = QLabel("")
@@ -267,19 +567,19 @@ class SettingsWindow(QMainWindow):
         live_layout.addLayout(live_title_row)
 
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0) # Indeterminate pulsing when active
-        self.progress_bar.setFixedHeight(6)
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setFixedHeight(5)
         self.progress_bar.setVisible(False)
         live_layout.addWidget(self.progress_bar)
 
-        self.lbl_live_action = QLabel("Asistente inactivo. Pulsa tu atajo de voz para pedir cualquier tarea.")
+        self.lbl_live_action = QLabel("Jarvis en reposo. Pulsa tu atajo o di 'Hey Jarvis' para pedir cualquier tarea.")
         self.lbl_live_action.setWordWrap(True)
         self.lbl_live_action.setStyleSheet("color: #aaa; font-style: italic;")
         live_layout.addWidget(self.lbl_live_action)
 
         self.lbl_live_detail = QLabel("")
         self.lbl_live_detail.setWordWrap(True)
-        self.lbl_live_detail.setStyleSheet("font-family: monospace; font-size: 11px; color: #5bc0de;")
+        self.lbl_live_detail.setStyleSheet("font-family: monospace; font-size: 11px; color: #00f0ff;")
         self.lbl_live_detail.setVisible(False)
         live_layout.addWidget(self.lbl_live_detail)
 
@@ -307,7 +607,7 @@ class SettingsWindow(QMainWindow):
         lbl_active_prefix = QLabel("Sesión actual en uso:")
         lbl_active_prefix.setStyleSheet("font-weight: bold;")
         self.lbl_active_id = QLabel(self.format_active_session_label())
-        self.lbl_active_id.setStyleSheet("color: #3daee9; font-family: monospace;")
+        self.lbl_active_id.setStyleSheet("color: #00f0ff; font-family: monospace;")
         active_row.addWidget(lbl_active_prefix)
         active_row.addWidget(self.lbl_active_id)
         active_row.addStretch()
@@ -325,7 +625,6 @@ class SettingsWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Horizontal)
 
-        # Left side: Conversation List
         left_widget = QWidget()
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -346,7 +645,6 @@ class SettingsWindow(QMainWindow):
 
         splitter.addWidget(left_widget)
 
-        # Right side: Detail Viewer
         right_widget = QWidget()
         right_layout = QVBoxLayout(right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -360,245 +658,142 @@ class SettingsWindow(QMainWindow):
 
         self.btn_resume_conv = QPushButton("▶️ Retomar esta conversación")
         self.btn_resume_conv.setEnabled(False)
-        self.btn_resume_conv.setStyleSheet("background-color: #2980b9; color: white; padding: 4px 10px; border-radius: 4px;")
         self.btn_resume_conv.clicked.connect(self.resume_selected_conversation)
         viewer_header.addWidget(self.btn_resume_conv)
         right_layout.addLayout(viewer_header)
 
-        self.chat_viewer = QTextBrowser()
-        self.chat_viewer.setOpenExternalLinks(False)
-        self.chat_viewer.setStyleSheet("background: palette(base); border: 1px solid palette(mid); border-radius: 6px; padding: 8px;")
-        self.chat_viewer.setHtml("<i>Selecciona una conversación de la lista para ver el historial detallado de preguntas, comandos ejecutados y respuestas.</i>")
-        right_layout.addWidget(self.chat_viewer)
+        self.detail_browser = QTextBrowser()
+        self.detail_browser.setOpenExternalLinks(True)
+        self.detail_browser.setPlaceholderText("Selecciona una conversación de la lista para ver los turnos y comandos ejecutados...")
+        right_layout.addWidget(self.detail_browser)
 
         splitter.addWidget(right_widget)
-        splitter.setSizes([260, 460])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 2)
 
         history_layout.addWidget(splitter)
-        layout.addWidget(history_group, 1)
+        layout.addWidget(history_group)
 
     # -------------------------------------------------------------------------
-    # TAB 2: VOICE & AUDIO (Existing Settings)
+    # HELPERS & SLOTS
     # -------------------------------------------------------------------------
-    def init_tab_audio(self):
-        layout = QVBoxLayout(self.tab_audio)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(14)
+    def on_wakeword_toggled(self, checked):
+        self.wake_container.setEnabled(checked)
 
-        # 1. Estado General
-        status_group = QGroupBox("Estado del Asistente")
-        status_layout = QVBoxLayout(status_group)
-        self.chk_enabled = QCheckBox("Habilitar Asistente de Voz (Atajo global activo)")
-        self.chk_enabled.setChecked(self.config.get("ENABLED", "true").lower() == "true")
-        status_layout.addWidget(self.chk_enabled)
-        layout.addWidget(status_group)
+    def update_sens_label(self, val):
+        thresh = val / 100.0
+        if thresh <= 0.22:
+            sens_txt = f"Alta ({thresh:.2f})"
+        elif thresh <= 0.35:
+            sens_txt = f"Normal ({thresh:.2f})"
+        else:
+            sens_txt = f"Estricta ({thresh:.2f})"
+        self.lbl_sens_val.setText(sens_txt)
 
-        # 2. Idioma del Asistente (Bilingual / Language Selector)
-        lang_group = QGroupBox("Idioma y Región / Assistant Language")
-        lang_layout = QVBoxLayout(lang_group)
-        lang_row = QHBoxLayout()
-        lang_label = QLabel("Idioma (Reconocimiento STT y Respuestas de AGY):")
-        self.cmb_lang = QComboBox()
-        self.cmb_lang.addItem("🇪🇸 Español (Spanish)", "es")
-        self.cmb_lang.addItem("🇺🇸 English (Inglés)", "en")
-        cur_lang = self.config.get("ASSISTANT_LANGUAGE", "es")
-        idx = self.cmb_lang.findData(cur_lang)
-        if idx >= 0:
-            self.cmb_lang.setCurrentIndex(idx)
-        self.cmb_lang.currentIndexChanged.connect(self.on_language_changed)
+    def on_autostop_toggled(self, checked):
+        self.silence_container.setEnabled(checked)
 
-        lang_row.addWidget(lang_label)
-        lang_row.addWidget(self.cmb_lang, 1)
-        lang_layout.addLayout(lang_row)
-        layout.addWidget(lang_group)
+    def on_silence_slider_changed(self, value):
+        self.silence_value_label.setText(f"{value / 10.0:.1f} s")
 
-        # 3. Voz y Volumen
-        voice_group = QGroupBox("Voz y Volumen (TTS)")
-        voice_layout = QVBoxLayout(voice_group)
+    def on_volume_changed(self, value):
+        self.vol_value_label.setText(f"{value}%")
 
-        # Selector de Voz
-        voice_select_layout = QHBoxLayout()
-        voice_label = QLabel("Voz del Asistente:")
-        self.cmb_voice = QComboBox()
-        for idx, v in enumerate(AVAILABLE_VOICES):
-            self.cmb_voice.addItem(v["label"], (v["model"], v["speaker"]))
-            if v["model"] == self.config.get("VOICE_MODEL") and v["speaker"] == self.config.get("VOICE_SPEAKER", ""):
-                self.cmb_voice.setCurrentIndex(idx)
+    def on_language_changed(self, index):
+        selected_lang = self.cmb_lang.currentData()
+        for idx in range(self.cmb_voice.count()):
+            v_data = self.cmb_voice.itemData(idx)
+            if v_data:
+                model_name, _ = v_data
+                is_en_model = model_name.startswith("en_")
+                if (selected_lang == "en" and is_en_model) or (selected_lang == "es" and not is_en_model):
+                    self.cmb_voice.setCurrentIndex(idx)
+                    break
 
-        voice_select_layout.addWidget(voice_label)
-        voice_select_layout.addWidget(self.cmb_voice, 1)
-        voice_layout.addLayout(voice_select_layout)
+    def format_active_session_label(self):
+        active_id = self.config.get("ACTIVE_CONVERSATION_ID", "")
+        if not active_id:
+            return "Ninguna (Se creará una nueva al hablar)"
+        return f"{active_id[:8]}...{active_id[-6:]}"
 
-        # Slider de Volumen
-        vol_header = QHBoxLayout()
-        vol_label = QLabel("Volumen de la voz (sin alterar volumen del sistema):")
-        self.vol_value_label = QLabel()
-        self.vol_value_label.setStyleSheet("font-weight: bold; color: #3daee9;")
-        vol_header.addWidget(vol_label)
-        vol_header.addStretch()
-        vol_header.addWidget(self.vol_value_label)
-        voice_layout.addLayout(vol_header)
+    def on_continuous_toggled(self, checked):
+        self.config["CONTINUOUS_CONVERSATION"] = "true" if checked else "false"
 
-        slider_layout = QHBoxLayout()
-        self.vol_slider = QSlider(Qt.Horizontal)
-        self.vol_slider.setMinimum(5)
-        self.vol_slider.setMaximum(100)
-        current_vol = int(float(self.config.get("TTS_VOLUME", "0.35")) * 100)
-        self.vol_slider.setValue(current_vol)
-        self.vol_value_label.setText(f"{current_vol}%")
-        self.vol_slider.valueChanged.connect(self.on_volume_changed)
+    def start_new_conversation(self):
+        new_id = conversations.reset_active_session()
+        self.config["ACTIVE_CONVERSATION_ID"] = new_id
+        self.lbl_active_id.setText(self.format_active_session_label())
+        QMessageBox.information(
+            self,
+            "Nueva Conversación",
+            "Se ha reiniciado el contexto. La próxima orden empezará una sesión limpia con Jarvis."
+        )
 
-        self.btn_test_voice = QPushButton("🔊 Probar Voz")
-        self.btn_test_voice.clicked.connect(self.test_voice)
+    def refresh_conversation_list(self):
+        self.conv_list.clear()
+        self.all_conversations = conversations.list_conversations()
+        active_id = self.config.get("ACTIVE_CONVERSATION_ID", "")
 
-        slider_layout.addWidget(self.vol_slider)
-        slider_layout.addWidget(self.btn_test_voice)
-        voice_layout.addLayout(slider_layout)
+        for conv in self.all_conversations:
+            cid = conv["id"]
+            title = conv["title"]
+            date_str = conv["updated_at"]
+            turn_count = conv["turn_count"]
 
-        # Opciones de voz
-        self.chk_voice_reply = QCheckBox("Responder hablando con voz sintetizada (Piper)")
-        self.chk_voice_reply.setChecked(self.config.get("ENABLE_VOICE_REPLY", "true").lower() == "true")
-        voice_layout.addWidget(self.chk_voice_reply)
+            item_text = f"💬 {title}\n📅 {date_str}  ·  {turn_count} turnos"
+            if cid == active_id:
+                item_text = f"⭐ [ACTIVA] {item_text}"
 
-        self.chk_processing_cue = QCheckBox("Aviso de voz inmediato 'Procesando...' al cortar")
-        self.chk_processing_cue.setChecked(self.config.get("ENABLE_PROCESSING_VOICE_CUE", "true").lower() == "true")
-        voice_layout.addWidget(self.chk_processing_cue)
+            item = QListWidgetItem(item_text)
+            item.setData(Qt.UserRole, cid)
+            self.conv_list.addItem(item)
 
-        self.chk_ducking = QCheckBox("🎮 Modo Gaming (Audio Ducking): Atenuar música/juego al 45% mientras el asistente habla")
-        self.chk_ducking.setChecked(self.config.get("AUDIO_DUCKING", "false").lower() == "true")
-        voice_layout.addWidget(self.chk_ducking)
+    def on_conversation_selected(self, item):
+        cid = item.data(Qt.UserRole)
+        self.btn_resume_conv.setEnabled(True)
+        detail = conversations.get_conversation_detail(cid)
+        if not detail:
+            self.detail_browser.setHtml("<p><i>No se pudo leer la transcripción.</i></p>")
+            return
 
-        layout.addWidget(voice_group)
+        html = f"""
+        <style>
+            body {{ font-family: sans-serif; font-size: 13px; color: palette(text); }}
+            .bubble-user {{ background: #2b4562; padding: 8px 12px; border-radius: 8px; margin: 6px 0; }}
+            .bubble-assistant {{ background: #232d3a; padding: 8px 12px; border-radius: 8px; margin: 6px 0 14px 0; border-left: 3px solid #00f0ff; }}
+            .tool-call {{ background: #161c24; font-family: monospace; font-size: 11px; padding: 6px; border-radius: 4px; color: #5bc0de; margin: 4px 0; }}
+        </style>
+        <h3>💬 {detail['title']}</h3>
+        <p style='color: #888; font-size: 11px;'>ID: {cid} | Turnos: {len(detail['turns'])}</p>
+        <hr/>
+        """
+        for turn in detail["turns"]:
+            user_msg = turn.get("user", "")
+            assistant_msg = turn.get("assistant", "")
+            tool_calls = turn.get("tool_calls", [])
 
-        # 3. Reconocimiento (Whisper)
-        stt_group = QGroupBox("Reconocimiento de Voz Local (Whisper)")
-        stt_layout = QVBoxLayout(stt_group)
+            html += f"<div class='bubble-user'><b>🗣️ Tú:</b> {user_msg}</div>"
+            if tool_calls:
+                for tc in tool_calls:
+                    html += f"<div class='tool-call'>⚙️ <b>{tc['name']}</b>: {tc['summary']}</div>"
+            if assistant_msg:
+                html += f"<div class='bubble-assistant'><b>🤖 Jarvis:</b> {assistant_msg}</div>"
 
-        model_layout = QHBoxLayout()
-        model_label = QLabel("Precisión de transcripción:")
-        self.cmb_model = QComboBox()
-        self.cmb_model.addItem("base (Ultra rápido ~0.15s, recomendado)", "base")
-        self.cmb_model.addItem("small (Mayor precisión en frases largas ~0.4s)", "small")
+        self.detail_browser.setHtml(html)
 
-        current_model = self.config.get("WHISPER_MODEL", "base")
-        idx = self.cmb_model.findData(current_model)
-        if idx >= 0:
-            self.cmb_model.setCurrentIndex(idx)
+    def resume_selected_conversation(self):
+        item = self.conv_list.currentItem()
+        if not item:
+            return
+        cid = item.data(Qt.UserRole)
+        self.config["ACTIVE_CONVERSATION_ID"] = cid
+        self.config["CONTINUOUS_CONVERSATION"] = "true"
+        self.chk_continuous.setChecked(True)
+        save_config(self.config)
+        self.lbl_active_id.setText(self.format_active_session_label())
+        self.refresh_conversation_list()
+        QMessageBox.information(self, "Conversación Retomada", f"Se ha fijado la sesión {cid[:8]} como activa para Jarvis.")
 
-        model_layout.addWidget(model_label)
-        model_layout.addWidget(self.cmb_model, 1)
-        stt_layout.addLayout(model_layout)
-        layout.addWidget(stt_group)
-
-        # 4. Detección Inteligente de Fin de Frase (Auto-Stop VAD)
-        vad_group = QGroupBox("Detección Automática de Fin de Frase (Auto-Stop VAD)")
-        vad_layout = QVBoxLayout(vad_group)
-
-        self.chk_autostop = QCheckBox("Habilitar corte por silencio (Finalizar grabación automáticamente al callar)")
-        self.chk_autostop.setChecked(self.config.get("AUTO_STOP_SILENCE", "false").lower() == "true")
-        self.chk_autostop.toggled.connect(self.on_autostop_toggled)
-        vad_layout.addWidget(self.chk_autostop)
-
-        # Container widget for slider to enable/disable when checkbox is toggled
-        self.silence_container = QWidget()
-        silence_layout = QVBoxLayout(self.silence_container)
-        silence_layout.setContentsMargins(0, 4, 0, 0)
-        silence_layout.setSpacing(4)
-
-        silence_header = QHBoxLayout()
-        silence_label = QLabel("Pausa de silencio requerida para enviar:")
-        self.silence_value_label = QLabel()
-        self.silence_value_label.setStyleSheet("font-weight: bold; color: #3daee9;")
-        silence_header.addWidget(silence_label)
-        silence_header.addStretch()
-        silence_header.addWidget(self.silence_value_label)
-        silence_layout.addLayout(silence_header)
-
-        silence_slider_layout = QHBoxLayout()
-        self.silence_slider = QSlider(Qt.Horizontal)
-        self.silence_slider.setMinimum(8)   # 0.8s
-        self.silence_slider.setMaximum(25)  # 2.5s
-        cur_silence = float(self.config.get("SILENCE_DURATION", "1.2"))
-        slider_val = int(round(cur_silence * 10))
-        self.silence_slider.setValue(slider_val)
-        self.silence_value_label.setText(f"{slider_val / 10.0:.1f} s")
-        self.silence_slider.valueChanged.connect(self.on_silence_slider_changed)
-        silence_slider_layout.addWidget(self.silence_slider)
-        silence_layout.addLayout(silence_slider_layout)
-
-        vad_layout.addWidget(self.silence_container)
-        self.silence_container.setEnabled(self.chk_autostop.isChecked())
-
-        lbl_privacy = QLabel("🔒 Privacidad garantizada: El micrófono NUNCA escucha en segundo plano sin pulsar el atajo o activar la palabra clave.")
-        lbl_privacy.setStyleSheet("color: #7bc992; font-size: 11px;")
-        lbl_privacy.setWordWrap(True)
-        vad_layout.addWidget(lbl_privacy)
-
-        layout.addWidget(vad_group)
-
-        # 5. Activación Manos Libres (Wake Word)
-        wake_group = QGroupBox("Activación Manos Libres (Wake Word)")
-        wake_layout = QVBoxLayout(wake_group)
-
-        self.chk_wakeword = QCheckBox("🗣️ Habilitar escucha de palabra clave en segundo plano (openWakeWord)")
-        self.chk_wakeword.setChecked(self.config.get("WAKE_WORD_ENABLED", "false").lower() == "true")
-        wake_layout.addWidget(self.chk_wakeword)
-
-        wake_row = QHBoxLayout()
-        wake_label = QLabel("Palabra clave para activar:")
-        self.cmb_wakeword = QComboBox()
-        self.cmb_wakeword.addItem("Hey Jarvis (Recomendado)", "hey_jarvis")
-        self.cmb_wakeword.addItem("Alexa", "alexa")
-        self.cmb_wakeword.addItem("Hey Mycroft", "hey_mycroft")
-        cur_wake = self.config.get("WAKE_WORD_MODEL", "hey_jarvis")
-        idx_wake = self.cmb_wakeword.findData(cur_wake)
-        if idx_wake >= 0:
-            self.cmb_wakeword.setCurrentIndex(idx_wake)
-
-        wake_row.addWidget(wake_label)
-        wake_row.addWidget(self.cmb_wakeword, 1)
-        wake_layout.addLayout(wake_row)
-
-        lbl_wake_priv = QLabel("🔒 Procesamiento 100% local con openWakeWord y ONNX. Consume <1% de CPU y no envía audio a internet.")
-        lbl_wake_priv.setStyleSheet("color: #7bc992; font-size: 11px;")
-        lbl_wake_priv.setWordWrap(True)
-        wake_layout.addWidget(lbl_wake_priv)
-
-        layout.addWidget(wake_group)
-
-        # 6. Interfaz Visual & Overlay HUD
-        hud_group = QGroupBox("Interfaz Visual en Pantalla")
-        hud_layout = QVBoxLayout(hud_group)
-
-        self.chk_hud = QCheckBox("🔮 Mostrar Cápsula Flotante en Pantalla (Overlay HUD / Dynamic Island)")
-        self.chk_hud.setChecked(self.config.get("OVERLAY_HUD_ENABLED", "true").lower() == "true")
-        hud_layout.addWidget(self.chk_hud)
-
-        lbl_hud_desc = QLabel("Muestra una barra translúcida en la parte superior sin robar foco del teclado ni interrumpir tus juegos.")
-        lbl_hud_desc.setStyleSheet("color: #888; font-size: 11px;")
-        hud_layout.addWidget(lbl_hud_desc)
-
-        layout.addWidget(hud_group)
-
-        # 5. Diagnóstico de Micrófono
-        mic_group = QGroupBox("Diagnóstico de Micrófono")
-        mic_layout = QVBoxLayout(mic_group)
-
-        self.btn_test_mic = QPushButton("🎙️ Probar Micrófono (Habla durante 3 segundos)")
-        self.btn_test_mic.clicked.connect(self.start_mic_test)
-        mic_layout.addWidget(self.btn_test_mic)
-
-        self.lbl_mic_result = QLabel("Pulsa el botón, di cualquier frase y verás en directo qué entiende Whisper.")
-        self.lbl_mic_result.setStyleSheet("color: #888; font-style: italic;")
-        self.lbl_mic_result.setWordWrap(True)
-        mic_layout.addWidget(self.lbl_mic_result)
-
-        layout.addWidget(mic_group)
-        layout.addStretch()
-
-    # -------------------------------------------------------------------------
-    # REAL-TIME STATUS POLLING
-    # -------------------------------------------------------------------------
     def poll_live_status(self):
         if not os.path.exists(LIVE_STATUS_FILE):
             return
@@ -622,7 +817,7 @@ class SettingsWindow(QMainWindow):
             tool_detail = data.get("tool_detail", "")
 
             self.lbl_global_status.setText("⚡ EJECUTANDO")
-            self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 4px 10px; border-radius: 4px; background: rgba(230, 160, 40, 0.2); color: #f39c12;")
+            self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 5px 14px; border-radius: 6px; background: rgba(230, 160, 40, 0.2); color: #f39c12; font-size: 12px;")
 
             self.lbl_live_title.setText(f"⚡ Tarea en curso (hace {elapsed}s)")
             self.progress_bar.setVisible(True)
@@ -640,7 +835,7 @@ class SettingsWindow(QMainWindow):
         else: # IDLE
             self.current_running_pid = None
             self.lbl_global_status.setText("🟢 En reposo")
-            self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 4px 10px; border-radius: 4px; background: rgba(80, 200, 120, 0.15); color: #50c878;")
+            self.lbl_global_status.setStyleSheet("font-weight: bold; padding: 5px 14px; border-radius: 6px; background: rgba(80, 200, 120, 0.15); color: #50c878; font-size: 12px;")
 
             self.lbl_live_title.setText("⚡ Monitor en Tiempo Real")
             self.progress_bar.setVisible(False)
@@ -655,200 +850,49 @@ class SettingsWindow(QMainWindow):
                 self.lbl_live_action.setText(f"✅ Última tarea ({last_action}):\n\"{last_user}\" ➔ {last_resp}")
                 self.lbl_live_action.setStyleSheet("color: #7bc992; font-size: 11px;")
             else:
-                self.lbl_live_action.setText("Asistente inactivo. Pulsa tu atajo de voz para pedir cualquier tarea.")
+                self.lbl_live_action.setText("Jarvis en reposo. Pulsa tu atajo o di 'Hey Jarvis' para pedir cualquier tarea.")
                 self.lbl_live_action.setStyleSheet("color: #aaa; font-style: italic;")
 
     def cancel_running_task(self):
-        """Kill the currently running AGY agent process."""
         pid = self.current_running_pid
         if not pid and os.path.exists(PID_FILE):
             try:
                 with open(PID_FILE, "r") as f:
                     pid = int(f.read().strip())
             except Exception:
-                pid = None
+                pass
 
         if pid:
             try:
                 os.kill(pid, signal.SIGTERM)
-                time.sleep(0.3)
-                os.kill(pid, signal.SIGKILL)
-            except Exception:
-                pass
+                time.sleep(0.2)
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except Exception:
+                    pass
+            except Exception as e:
+                QMessageBox.warning(self, "Error", f"No se pudo cancelar el proceso {pid}: {e}")
+                return
 
-        # Also cleanup pid file and mark idle
-        if os.path.exists(PID_FILE):
-            try:
-                os.remove(PID_FILE)
-            except Exception:
-                pass
-
-        try:
-            with open(LIVE_STATUS_FILE, "w", encoding="utf-8") as f:
-                json.dump({
-                    "status": "IDLE",
-                    "last_action": "Cancelado manualmente",
-                    "last_response": "Tarea detenida por el usuario.",
-                    "completed_at": time.time()
-                }, f)
-        except Exception:
-            pass
-
-        subprocess.run(["notify-send", "-a", "AI Voice Assistant", "-i", "dialog-warning", "🛑 Asistente IA", "Tarea cancelada por el usuario."], check=False)
+        conversations.set_live_idle("Tarea cancelada manualmente por el usuario.")
         self.poll_live_status()
-        QMessageBox.information(self, "Tarea Cancelada", "La tarea en curso ha sido detenida correctamente.")
-
-    # -------------------------------------------------------------------------
-    # CONVERSATIONS & SESSIONS MANAGEMENT
-    # -------------------------------------------------------------------------
-    def format_active_session_label(self):
-        active_id = self.config.get("ACTIVE_CONVERSATION_ID", "").strip()
-        continuous = self.config.get("CONTINUOUS_CONVERSATION", "true").lower() == "true"
-        if not continuous:
-            return "Desactivado (Cada orden empieza de cero)"
-        if active_id:
-            return f"{active_id[:12]}... (Activa)"
-        return "Nueva sesión limpia (se creará en la próxima orden)"
-
-    def on_continuous_toggled(self, checked):
-        self.config["CONTINUOUS_CONVERSATION"] = "true" if checked else "false"
-        self.lbl_active_id.setText(self.format_active_session_label())
-        save_config(self.config)
-
-    def start_new_conversation(self):
-        """Reset conversation context."""
-        self.config["ACTIVE_CONVERSATION_ID"] = ""
-        save_config(self.config)
-        self.lbl_active_id.setText(self.format_active_session_label())
-        self.refresh_conversation_list()
-        QMessageBox.information(
-            self,
-            "Nueva Conversación",
-            "Contexto reiniciado con éxito.\nTu próxima instrucción de voz empezará en una sesión limpia sin mezclar el proyecto anterior."
-        )
-
-    def refresh_conversation_list(self):
-        """Reload conversation summaries from brain folder."""
-        active_id = self.config.get("ACTIVE_CONVERSATION_ID", "").strip()
-        self.all_conversations = conversations.get_all_conversations(active_conv_id=active_id, limit=50)
-
-        self.conv_list.clear()
-        selected_row = -1
-
-        for idx, c in enumerate(self.all_conversations):
-            prefix = "⭐ [ACTIVA] " if c["is_active"] else ""
-            item_text = f"{prefix}{c['date_str']} ({c['turn_count']} turnos)\n  \"{c['title'][:45]}\""
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.UserRole, c["id"])
-
-            if c["is_active"]:
-                item.setForeground(Qt.cyan)
-                selected_row = idx
-
-            self.conv_list.addItem(item)
-
-        if selected_row >= 0:
-            self.conv_list.setCurrentRow(selected_row)
-            self.on_conversation_selected(self.conv_list.item(selected_row))
-
-    def on_conversation_selected(self, item):
-        if not item:
-            return
-        conv_id = item.data(Qt.UserRole)
-        self.btn_resume_conv.setEnabled(True)
-        self.lbl_viewer_title.setText(f"Conversación: {conv_id[:12]}...")
-
-        # Load turns
-        turns = conversations.get_conversation_turns(conv_id)
-        if not turns:
-            self.chat_viewer.setHtml("<i>No se encontraron mensajes en esta conversación.</i>")
-            return
-
-        html_parts = [
-            """<style>
-                body { font-family: sans-serif; font-size: 13px; line-height: 1.4; }
-                .turn { margin-bottom: 16px; border-bottom: 1px solid rgba(128,128,128,0.2); padding-bottom: 12px; }
-                .user-box { background: rgba(61, 174, 233, 0.15); border-left: 4px solid #3daee9; padding: 6px 10px; border-radius: 4px; margin-bottom: 6px; }
-                .tool-box { background: rgba(243, 156, 18, 0.12); border-left: 4px solid #f39c12; padding: 4px 8px; border-radius: 4px; font-family: monospace; font-size: 11px; margin: 4px 0 6px 10px; }
-                .agent-box { background: rgba(46, 204, 113, 0.15); border-left: 4px solid #2ecc71; padding: 6px 10px; border-radius: 4px; }
-                .header-tag { font-weight: bold; font-size: 11px; margin-bottom: 2px; }
-            </style>"""
-        ]
-
-        for i, t in enumerate(turns):
-            user_msg = t.get("user", "").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
-            reply_msg = t.get("reply", "").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
-            t_time = t.get("time", "")
-
-            html_parts.append(f"<div class='turn'>")
-            html_parts.append(f"<div class='user-box'><div class='header-tag' style='color:#3daee9;'>👤 TÚ (VOZ) {f'• {t_time}' if t_time else ''}</div>{user_msg}</div>")
-
-            # Tools
-            actions = t.get("actions", [])
-            if actions:
-                for a in actions:
-                    cmd = a.get("cmd", "") or a.get("summary", "") or a.get("name", "tool")
-                    cmd_clean = cmd.replace("<", "&lt;").replace(">", "&gt;")
-                    html_parts.append(f"<div class='tool-box'>⚙️ <b>{a.get('name', 'comando')}:</b> {cmd_clean}</div>")
-
-            # Reply
-            if reply_msg:
-                html_parts.append(f"<div class='agent-box'><div class='header-tag' style='color:#2ecc71;'>🤖 ASISTENTE AGY</div>{reply_msg}</div>")
-            html_parts.append("</div>")
-
-        self.chat_viewer.setHtml("".join(html_parts))
-
-    def resume_selected_conversation(self):
-        item = self.conv_list.currentItem()
-        if not item:
-            return
-        conv_id = item.data(Qt.UserRole)
-        self.config["ACTIVE_CONVERSATION_ID"] = conv_id
-        self.config["CONTINUOUS_CONVERSATION"] = "true"
-        self.chk_continuous.setChecked(True)
-        save_config(self.config)
-        self.lbl_active_id.setText(self.format_active_session_label())
-        self.refresh_conversation_list()
-        QMessageBox.information(
-            self,
-            "Conversación Reanudada",
-            f"Se ha fijado la conversación seleccionada como activa.\nLos siguientes comandos de voz continuarán dentro de este hilo con su memoria previa."
-        )
-
-    def on_language_changed(self, index):
-        selected_lang = self.cmb_lang.currentData()
-        current_data = self.cmb_voice.currentData()
-        current_model = current_data[0] if current_data else ""
-        if selected_lang == "en" and not current_model.startswith("en_"):
-            for i, v in enumerate(AVAILABLE_VOICES):
-                if v["model"] == "en_US-lessac-medium.onnx":
-                    self.cmb_voice.setCurrentIndex(i)
-                    break
-        elif selected_lang == "es" and current_model.startswith("en_"):
-            for i, v in enumerate(AVAILABLE_VOICES):
-                if v["model"] == "es_ES-davefx-medium.onnx":
-                    self.cmb_voice.setCurrentIndex(i)
-                    break
-
-    # -------------------------------------------------------------------------
-    # AUDIO & VOICE TESTING
-    # -------------------------------------------------------------------------
-    def on_volume_changed(self, value):
-        self.vol_value_label.setText(f"{value}%")
+        QMessageBox.information(self, "Tarea Cancelada", "La tarea activa de Jarvis ha sido detenida.")
 
     def test_voice(self):
         model, speaker = self.cmb_voice.currentData()
-        vol = self.vol_slider.value() / 100.0
+        volume = round(self.vol_slider.value() / 100.0, 2)
         model_path = os.path.join(VOICES_DIR, model)
+
         threading.Thread(
-            target=lambda: self._speak_sample(model_path, speaker, vol),
+            target=self._speak_sample,
+            args=(model_path, speaker, volume),
             daemon=True
         ).start()
 
     def _speak_sample(self, model_path, speaker, volume):
         import speak
         is_en = os.path.basename(model_path).startswith("en_")
-        sample_text = "Hello Oscar, this is a test of my voice." if is_en else "Hola Óscar, esta es una prueba de mi voz."
+        sample_text = "Hello Oscar, this is Jarvis. All systems online." if is_en else "Hola Óscar, soy Jarvis. Todos los sistemas están listos."
         speak.speak(sample_text, model_path=model_path, speaker=speaker, volume=volume)
 
     def start_mic_test(self):
@@ -892,16 +936,10 @@ class SettingsWindow(QMainWindow):
         self.btn_test_mic.setText("🎙️ Probar Micrófono (Habla durante 3 segundos)")
         if text:
             self.lbl_mic_result.setText(f"✅ Reconocido: \"{text}\"")
-            self.lbl_mic_result.setStyleSheet("color: #98c379; font-weight: bold;")
+            self.lbl_mic_result.setStyleSheet("color: #00f0ff; font-weight: bold;")
         else:
             self.lbl_mic_result.setText("⚠️ No se ha detectado voz clara. Comprueba que el micro esté activo.")
             self.lbl_mic_result.setStyleSheet("color: #e5c07b; font-weight: bold;")
-
-    def on_autostop_toggled(self, checked):
-        self.silence_container.setEnabled(checked)
-
-    def on_silence_slider_changed(self, value):
-        self.silence_value_label.setText(f"{value / 10.0:.1f} s")
 
     def save_settings(self):
         model, speaker = self.cmb_voice.currentData()
@@ -919,6 +957,7 @@ class SettingsWindow(QMainWindow):
         self.config["AUDIO_DUCKING"] = "true" if self.chk_ducking.isChecked() else "false"
         self.config["WAKE_WORD_ENABLED"] = "true" if self.chk_wakeword.isChecked() else "false"
         self.config["WAKE_WORD_MODEL"] = self.cmb_wakeword.currentData()
+        self.config["WAKE_WORD_THRESHOLD"] = f"{self.slider_sens.value() / 100.0:.2f}"
         self.config["OVERLAY_HUD_ENABLED"] = "true" if self.chk_hud.isChecked() else "false"
 
         save_config(self.config)
@@ -938,10 +977,12 @@ class SettingsWindow(QMainWindow):
         # Regenerate procesando cue in background with new voice
         threading.Thread(target=lambda: regenerate_procesando_audio(model, speaker), daemon=True).start()
 
-        QMessageBox.information(self, "Configuración Guardada", "Los cambios han sido aplicados correctamente.")
+        QMessageBox.information(self, "Configuración Guardada", "Todos los ajustes de Jarvis se han aplicado correctamente.")
 
 def main():
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
+    if os.path.exists(APP_ICON):
+        app.setWindowIcon(QIcon(APP_ICON))
     window = SettingsWindow()
     window.show()
     sys.exit(app.exec())

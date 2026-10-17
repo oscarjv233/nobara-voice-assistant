@@ -1,8 +1,10 @@
 [Desktop Entry]
-Name=AI Voice Assistant - Bandeja del Sistema
+Name=Jarvis - Bandeja del Sistema
+Name[es]=Jarvis - Bandeja del Sistema
+Name[en]=Jarvis - System Tray
 Comment=Icono de estado y menú rápido en la bandeja del sistema de KDE Plasma
 Exec=nobara-voice-assistant-tray
-Icon=audio-input-microphone
+Icon=nobara-jarvis
 Terminal=false
 Type=Application
 Categories=Utility;AudioVideo;Audio;

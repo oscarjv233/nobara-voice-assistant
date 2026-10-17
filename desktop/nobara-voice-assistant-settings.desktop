@@ -1,12 +1,12 @@
 [Desktop Entry]
-Name=Ajustes del Asistente de Voz IA
-Name[en]=AI Voice Assistant Settings
-Name[en_US]=AI Voice Assistant Settings
-GenericName=AI Voice Assistant Settings
-Comment=Configura el volumen, modelos y opciones del Asistente de Voz
+Name=Jarvis - Panel de Control & Historial
+Name[es]=Jarvis - Panel de Control & Historial
+Name[en]=Jarvis - Control Panel & History
+GenericName=Jarvis Settings
+Comment=Ajustes de voz, modelo de IA y monitor en tiempo real de Jarvis
 Exec=nobara-voice-assistant-settings
-Icon=preferences-system
+Icon=nobara-jarvis
 Terminal=false
 Type=Application
-Categories=Settings;Utility;Audio;
-Keywords=ai;voice;assistant;settings;audio;volume;
+Categories=Settings;HardwareSettings;Utility;
+Keywords=jarvis;ai;voice;settings;config;antigravity;nobara;

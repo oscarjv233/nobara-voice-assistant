@@ -30,6 +30,8 @@ from PySide6.QtGui import (
 from PySide6.QtCore import Qt, QTimer
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSETS_DIR = os.path.join(PROJECT_DIR, "assets")
+APP_ICON = os.path.join(ASSETS_DIR, "nobara-jarvis.png")
 CONFIG_FILE = os.path.join(PROJECT_DIR, "config", "config.env")
 ASSISTANT_BIN = os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant")
 SETTINGS_BIN = os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant-settings")
@@ -116,23 +118,16 @@ def make_tray_icon(state):
         painter.drawLine(22, 42, 42, 22)
 
     else: # idle
-        # Clean sleek slate-teal circle
-        painter.setBrush(QBrush(QColor(39, 174, 96, 230)))
+        jarvis_icon = os.path.join(ASSETS_DIR, "nobara-jarvis-64.png")
+        if os.path.exists(jarvis_icon):
+            return QIcon(jarvis_icon)
+
+        # Fallback drawing
+        painter.setBrush(QBrush(QColor(0, 229, 255, 230)))
         painter.setPen(QPen(QColor(255, 255, 255, 180), 2))
         painter.drawEllipse(8, 8, 48, 48)
-
-        # Draw a stylized clean microphone
-        painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(Qt.NoPen)
-        # Mic body capsule
-        painter.drawRoundedRect(26, 18, 12, 18, 6, 6)
-        # Mic stand arc
-        painter.setPen(QPen(QColor(255, 255, 255), 3, Qt.SolidLine, Qt.RoundCap))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawArc(22, 24, 20, 16, 0, -180 * 16)
-        # Stand stem & base
-        painter.drawLine(32, 40, 32, 47)
-        painter.drawLine(25, 47, 39, 47)
+        painter.end()
+        return QIcon(pix)
 
     painter.end()
     return QIcon(pix)
@@ -141,6 +136,8 @@ class AssistantTrayApp:
     def __init__(self):
         self.app = QApplication.instance() or QApplication(sys.argv)
         self.app.setQuitOnLastWindowClosed(False)
+        if os.path.exists(APP_ICON):
+            self.app.setWindowIcon(QIcon(APP_ICON))
 
         self.icons = {
             "idle": make_tray_icon("idle"),
@@ -150,7 +147,7 @@ class AssistantTrayApp:
 
         self.current_state = "idle"
         self.tray = QSystemTrayIcon(self.icons["idle"])
-        self.tray.setToolTip("Asistente de Voz Nobara (En reposo)")
+        self.tray.setToolTip("Jarvis AI — Nobara Linux (En reposo)")
 
         self.tray.activated.connect(self.on_tray_activated)
 

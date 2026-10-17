@@ -1,8 +1,10 @@
 [Desktop Entry]
-Name=AI Voice Assistant - Silenciar / Detener
-Comment=Silencia inmediatamente la voz del Asistente o detiene la reproducción
+Name=Jarvis - Silenciar / Detener
+Name[es]=Jarvis - Silenciar / Detener
+Name[en]=Jarvis - Mute / Panic Silence
+Comment=Silencia inmediatamente la voz de Jarvis o detiene la tarea
 Exec=nobara-voice-assistant-silence
-Icon=audio-volume-muted
+Icon=nobara-jarvis
 Terminal=false
 Type=Application
 Categories=Utility;AudioVideo;Audio;

@@ -1,12 +1,12 @@
 [Desktop Entry]
-Name=Asistente de Voz IA
-Name[en]=AI Voice Assistant
-Name[en_US]=AI Voice Assistant
-GenericName=AI Voice Assistant
-Comment=Toggle voice capture for Nobara AI Assistant
+Name=Jarvis - Asistente de Voz IA
+Name[es]=Jarvis - Asistente de Voz IA
+Name[en]=Jarvis - AI Voice Assistant
+GenericName=Jarvis AI Assistant
+Comment=Asistente de inteligencia artificial personal para Nobara Linux
 Exec=nobara-voice-assistant
-Icon=audio-input-microphone
+Icon=nobara-jarvis
 Terminal=false
 Type=Application
 Categories=Utility;Audio;System;
-Keywords=ai;voice;assistant;antigravity;mic;microphone;
+Keywords=jarvis;ai;voice;assistant;antigravity;mic;microphone;nobara;
