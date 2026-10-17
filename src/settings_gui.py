@@ -731,14 +731,14 @@ class SettingsWindow(QMainWindow):
 
     def refresh_conversation_list(self):
         self.conv_list.clear()
-        self.all_conversations = conversations.list_conversations()
+        self.all_conversations = conversations.get_all_conversations()
         active_id = self.config.get("ACTIVE_CONVERSATION_ID", "")
 
         for conv in self.all_conversations:
-            cid = conv["id"]
-            title = conv["title"]
-            date_str = conv["updated_at"]
-            turn_count = conv["turn_count"]
+            cid = conv.get("id", "")
+            title = conv.get("title", "")
+            date_str = conv.get("date_str") or conv.get("updated_at", "")
+            turn_count = conv.get("turn_count", 0)
 
             item_text = f"💬 {title}\n📅 {date_str}  ·  {turn_count} turnos"
             if cid == active_id:

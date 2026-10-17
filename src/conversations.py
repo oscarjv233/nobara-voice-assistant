@@ -93,6 +93,8 @@ def get_all_conversations(active_conv_id: str = "", limit: int = 60):
 
     return conversations
 
+list_conversations = get_all_conversations
+
 def get_conversation_turns(conv_id: str):
     """
     Parses full turn-by-turn history of a specific conversation ID.
