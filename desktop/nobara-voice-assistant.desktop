@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Asistente de Voz IA
+Name[en]=AI Voice Assistant
+Name[en_US]=AI Voice Assistant
+GenericName=AI Voice Assistant
+Comment=Toggle voice capture for Nobara AI Assistant
+Exec=nobara-voice-assistant
+Icon=audio-input-microphone
+Terminal=false
+Type=Application
+Categories=Utility;Audio;System;
+Keywords=ai;voice;assistant;antigravity;mic;microphone;

@@ -1,0 +1,32 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Assistant runtime and temporary files
+*.wav
+*.pid
+*.id
+*.lock
+*.log
+/tmp/
+
+# Auto-generated sound cue and large voice weights (downloaded via script)
+voices/procesando.wav
+voices/*.onnx
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store

@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Nobara AI Voice Assistant
+# Main Controller Script (Toggle Mode + Voice Feedback + Independent Volume)
+# ==============================================================================
+
+# Follow symlinks to locate real project directory
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+
+# Source user configuration
+if [ -f "$PROJECT_DIR/config/config.env" ]; then
+    source "$PROJECT_DIR/config/config.env"
+fi
+
+export PATH="$HOME/.gemini/antigravity-cli/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export DISPLAY="${DISPLAY:-:0}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+export XDG_CURRENT_DESKTOP="KDE"
+export KDE_FULL_SESSION=true
+
+PID_FILE="/tmp/nobara_assistant.pid"
+AUDIO_FILE="/tmp/nobara_assistant_mic.wav"
+NOTIF_ID_FILE="/tmp/nobara_assistant_notif.id"
+LOCK_FILE="/tmp/nobara_assistant.lock"
+
+SOUND_START="/usr/share/sounds/ocean/stereo/bell.oga"
+SOUND_STOP="/usr/share/sounds/ocean/stereo/button-pressed.oga"
+PROCESANDO_WAV="$PROJECT_DIR/voices/procesando.wav"
+TRANSCRIBE_SCRIPT="$PROJECT_DIR/src/transcribe.py"
+SPEAK_SCRIPT="$PROJECT_DIR/src/speak.py"
+AGENT_RUNNER="$PROJECT_DIR/src/agent_runner.py"
+
+AGY_BIN="${AGY_BIN:-$HOME/.local/bin/agy}"
+WHISPER_MODEL="${WHISPER_MODEL:-base}"
+ENABLE_VOICE_REPLY="${ENABLE_VOICE_REPLY:-true}"
+ENABLE_PROCESSING_VOICE_CUE="${ENABLE_PROCESSING_VOICE_CUE:-true}"
+RESULT_NOTIF_TIMEOUT="${RESULT_NOTIF_TIMEOUT:-15000}"
+export TTS_VOLUME="${TTS_VOLUME:-0.35}"
+
+# Check if assistant is disabled in config
+if [ "$ENABLED" = "false" ]; then
+    notify-send -a "AI Voice Assistant" -i dialog-information -t 3000 "Asistente IA" "El asistente está deshabilitado en los ajustes."
+    exit 0
+fi
+
+# Lock to avoid race conditions
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    exit 1
+fi
+
+# ==============================================================================
+# STATE 1: ALREADY RECORDING -> STOP & PROCESS
+# ==============================================================================
+if [ -f "$PID_FILE" ]; then
+    RECORD_PID=$(cat "$PID_FILE")
+    if [ -n "$RECORD_PID" ] && kill -0 "$RECORD_PID" 2>/dev/null; then
+        # 1. Stop recording cleanly
+        kill -SIGINT "$RECORD_PID" 2>/dev/null
+        for i in {1..20}; do
+            if ! kill -0 "$RECORD_PID" 2>/dev/null; then
+                break
+            fi
+            sleep 0.1
+        done
+        rm -f "$PID_FILE"
+
+        # Release lock so another trigger isn't blocked
+        flock -u 200
+
+        # Retrieve previous notification ID if exists
+        NOTIF_ID=""
+        if [ -f "$NOTIF_ID_FILE" ]; then
+            NOTIF_ID=$(cat "$NOTIF_ID_FILE")
+        fi
+
+        # 2. Audio & Voice feedback (controlled stream volume)
+        if [ -f "$SOUND_STOP" ]; then
+            pw-play --volume="$TTS_VOLUME" "$SOUND_STOP" 200>&- >/dev/null 2>&1 &
+        fi
+        if [ "$ENABLE_PROCESSING_VOICE_CUE" = "true" ] && [ -f "$PROCESANDO_WAV" ]; then
+            pw-play --volume="$TTS_VOLUME" "$PROCESANDO_WAV" 200>&- >/dev/null 2>&1 &
+        fi
+
+        # 3. Notification update: Processing
+        if [ -n "$NOTIF_ID" ]; then
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i system-run -t 0 "🧠 Procesando voz..." "Interpretando lo que has dicho..." >/dev/null 2>&1
+        else
+            NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i system-run -t 0 "🧠 Procesando voz..." "Interpretando lo que has dicho...")
+            echo "$NOTIF_ID" > "$NOTIF_ID_FILE"
+        fi
+
+        # 4. Transcribe locally with Whisper
+        if [ ! -f "$AUDIO_FILE" ] || [ ! -s "$AUDIO_FILE" ]; then
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ Asistente IA" "No se detectó audio."
+            exit 0
+        fi
+
+        TEXT=$(python3 "$TRANSCRIBE_SCRIPT" "$AUDIO_FILE" "$WHISPER_MODEL" "es" 2>/tmp/nobara_assistant_stt.log)
+        TEXT=$(echo "$TEXT" | tr -d '\r' | sed 's/^[ \t]*//;s/[ \t]*$//')
+
+        if [ -z "$TEXT" ]; then
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ Asistente IA" "No se detectó ninguna instrucción clara."
+            if [ "$ENABLE_VOICE_REPLY" = "true" ]; then
+                python3 "$SPEAK_SCRIPT" "No te he entendido bien." 200>&- >/dev/null 2>&1 &
+            fi
+            exit 0
+        fi
+
+        # 5. Show what was transcribed
+        notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🗣️ Has dicho:" "$TEXT\n\n(Ejecutando...)" >/dev/null 2>&1
+
+        # 6. Execute action with Antigravity via AGENT_RUNNER (Live feedback + Session management)
+        CLEAN_RESPONSE=$(python3 "$AGENT_RUNNER" --text "$TEXT" --notif-id "$NOTIF_ID" 2>&1)
+
+        if [ -z "$CLEAN_RESPONSE" ]; then
+            CLEAN_RESPONSE="Orden completada."
+        fi
+
+        # 7. Final Notification
+        notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-ok -t "$RESULT_NOTIF_TIMEOUT" "🤖 Asistente Nobara" "$CLEAN_RESPONSE"
+
+        # 8. Voice Response (TTS at controlled stream volume)
+        if [ "$ENABLE_VOICE_REPLY" = "true" ]; then
+            python3 "$SPEAK_SCRIPT" "$CLEAN_RESPONSE" 200>&- >/dev/null 2>&1 &
+        fi
+
+        rm -f "$NOTIF_ID_FILE"
+        exit 0
+    else
+        rm -f "$PID_FILE"
+    fi
+fi
+
+# ==============================================================================
+# STATE 2: NOT RECORDING -> START RECORDING
+# ==============================================================================
+rm -f "$AUDIO_FILE"
+
+# Sound chime (at controlled volume)
+if [ -f "$SOUND_START" ]; then
+    pw-play --volume="$TTS_VOLUME" "$SOUND_START" 200>&- >/dev/null 2>&1 &
+fi
+
+# Persistent notification without countdown bar (-t 0)
+NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Pulsa el atajo de nuevo cuando termines.")
+echo "$NOTIF_ID" > "$NOTIF_ID_FILE"
+
+# Start PipeWire recording (16kHz mono s16)
+pw-record --rate 16000 --channels 1 --format s16 "$AUDIO_FILE" 200>&- >/dev/null 2>&1 &
+echo $! > "$PID_FILE"
+
+# Release lock
+flock -u 200

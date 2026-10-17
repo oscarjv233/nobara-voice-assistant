@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Launcher for Nobara Voice Assistant Control Panel (GUI)
+# ==============================================================================
+
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
+
+export DISPLAY="${DISPLAY:-:0}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+
+python3 "$PROJECT_DIR/src/settings_gui.py" "$@"
