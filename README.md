@@ -1,6 +1,37 @@
-# 🎙️ Nobara AI Voice Assistant — Documentación Completa
+# 🎙️ Nobara / Linux AI Voice Assistant — Código Abierto (MIT)
 
 Asistente de inteligencia artificial personal, 100% local en reconocimiento y síntesis de voz, integrado a nivel de sistema operativo en **Nobara Linux** (KDE Plasma 6 + Wayland + PipeWire) impulsado por el CLI de **Antigravity (`agy`)**.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Platform: Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Nobara%20%7C%20KDE-blue.svg)]()
+[![Python: 3.10+](https://img.shields.io/badge/Python-3.10+-brightgreen.svg)]()
+
+---
+
+## 🚀 Instalación Rápida (Para nuevos usuarios / amigos)
+
+Si descargas o clonas este proyecto en un equipo nuevo:
+
+```bash
+git clone https://github.com/tu-usuario/nobara-voice-assistant.git
+cd nobara-voice-assistant
+./install.sh
+```
+
+El instalador automático (`install.sh`):
+1. Instalará las herramientas necesarias de tu distribución (`pipewire-utils`, `libnotify`, `python3`, etc.).
+2. Instalará las dependencias de Python (`faster-whisper`, `piper-tts`, `PySide6`, `numpy`).
+3. Descargará los modelos de voz en español si no existen.
+4. Si no tienes **Antigravity (`agy`)**, lo descargará e instalará automáticamente.
+5. Creará los accesos directos y te guiará para asignar el atajo de voz en KDE Plasma.
+
+> [!IMPORTANT]
+> **Inicio de sesión personal en Antigravity (`agy`):**
+> Cada usuario debe autenticarse con su propia cuenta de Google. Si es la primera vez que usas Antigravity, simplemente abre un terminal y escribe:
+> ```bash
+> agy
+> ```
+> Sigue el enlace en pantalla para iniciar sesión con tu cuenta de Google. A partir de ese momento, el asistente de voz funcionará vinculado a tu cuenta personal.
 
 ---
 
@@ -11,9 +42,9 @@ Asistente de inteligencia artificial personal, 100% local en reconocimiento y s�
 3. [Componentes Técnicos en Profundidad](#3-componentes-técnicos-en-profundidad)
    - [A. Captura de Audio Nativa (PipeWire)](#a-captura-de-audio-nativa-pipewire)
    - [B. Reconocimiento de Voz Local (faster-whisper)](#b-reconocimiento-de-voz-local-faster-whisper)
-   - [C. Cerebro y Ejecución Autónoma (Antigravity agy)](#c-cerebro-y-ejecución-autónoma-antigravity-agy)
+   - [C. Cerebro y Continuidad de Sesión (Antigravity agy)](#c-cerebro-autónomo-y-continuidad-de-sesión-antigravity-agy--agent_runner)
    - [D. Síntesis de Voz Neural (Piper TTS)](#d-síntesis-de-voz-neural-piper-tts)
-   - [E. Panel Gráfico de Control (PySide6 / Qt6)](#e-panel-gráfico-de-control-pyside6--qt6)
+   - [E. Panel Gráfico de Control e Historial (PySide6 / Qt6)](#e-panel-gráfico-de-control-e-historial-pyside6--qt6)
 4. [Control de Volumen Independiente](#4-control-de-volumen-independiente)
 5. [Guía de Voces y Cómo Añadir Más](#5-guía-de-voces-y-cómo-añadir-más)
 6. [Configuración del Atajo en KDE Plasma 6](#6-configuración-del-atajo-en-kde-plasma-6)
@@ -44,10 +75,14 @@ flowchart TD
 
 ## 2. Estructura del Proyecto y Archivos
 
-El proyecto reside de forma autocontenida en `/home/oscar/nobara-voice-assistant/`:
+El proyecto reside de forma autocontenida en `~/nobara-voice-assistant/`:
 
 ```
-/home/oscar/nobara-voice-assistant/
+nobara-voice-assistant/
+├── run.sh                             # Lanzador rápido de la app o asistente
+├── install.sh                         # Instalador automático para cualquier máquina
+├── LICENSE                            # Licencia libre MIT
+├── README.md                          # Documentación completa
 ├── bin/
 │   ├── nobara-voice-assistant         # Script ejecutable principal (gestión de estados toggle)
 │   └── nobara-voice-assistant-settings# Lanzador de la aplicación gráfica de ajustes
@@ -137,7 +172,7 @@ Las voces se encuentran en el directorio `voices/` en formato ONNX. Actualmente 
 
 ### ¿Cómo añadir más voces de Piper en el futuro?
 1. Descarga el modelo `.onnx` y su `.onnx.json` desde el repositorio oficial de [HuggingFace rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
-2. Guárdalos en `/home/oscar/nobara-voice-assistant/voices/`.
+2. Guárdalos en la carpeta `voices/` del proyecto.
 3. Añade la entrada en la lista `AVAILABLE_VOICES` dentro de `src/settings_gui.py`.
 
 ---
@@ -183,5 +218,5 @@ En sistemas en inglés (Nobara KDE Plasma 6):
   ```
 - **Reinstalar o refrescar enlaces:**
   ```bash
-  /home/oscar/nobara-voice-assistant/install.sh
+  ./install.sh
   ```
