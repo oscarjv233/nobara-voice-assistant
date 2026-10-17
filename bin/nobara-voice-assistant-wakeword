@@ -16,6 +16,7 @@ case "$1" in
         fi
         echo "Starting Wake Word daemon..."
         python3 "$PROJECT_DIR/src/wakeword.py" >/dev/null 2>&1 &
+        echo $! > "$PIDFILE"
         echo "Wake Word daemon started."
         ;;
     stop)
