@@ -87,6 +87,7 @@ nobara-voice-assistant/
 │   ├── nobara-voice-assistant         # Script ejecutable principal (gestión de estados toggle)
 │   └── nobara-voice-assistant-settings# Lanzador de la aplicación gráfica de ajustes
 ├── src/
+│   ├── recorder.py                    # Grabador inteligente PipeWire con detección de fin de frase (Auto-Stop VAD)
 │   ├── transcribe.py                  # Motor STT: faster-whisper con ganancia adaptativa
 │   ├── speak.py                       # Motor TTS: Piper neural, limpiador markdown y volumen de stream
 │   ├── agent_runner.py                # Ejecutor de AGY con streaming live, monitor de tareas y memoria de sesión
@@ -110,10 +111,15 @@ nobara-voice-assistant/
 
 ## 3. Componentes Técnicos en Profundidad
 
-### A. Captura de Audio Nativa (PipeWire)
+### A. Captura de Audio Nativa y Detección de Fin de Frase (PipeWire + Auto-Stop VAD)
 - Utiliza la herramienta oficial `pw-record` conectada al nodo de entrada por defecto (micrófono USB Trust GXT 232).
 - Parámetros: `--rate 16000 --channels 1 --format s16` (formato ideal para modelos Whisper).
-- Manejo de procesos: Guarda el PID en `/tmp/nobara_assistant.pid`. Al pulsar de nuevo, envía `kill -SIGINT` para que PipeWire cierre el contenedor WAV con sus cabeceras correctas.
+- Manejo de procesos: Guarda el PID en `/tmp/nobara_assistant.pid`. Al pulsar de nuevo, envía `kill -SIGINT` para que se cierre el contenedor WAV con sus cabeceras correctas.
+- **Detección Automática de Silencio Inteligente (Auto-Stop VAD - Opcional):**
+  - Implementado en [src/recorder.py](file:///home/oscar/nobara-voice-assistant/src/recorder.py).
+  - Mide la energía RMS en trozos de 50ms, calibra dinámicamente el ruido ambiental base en los primeros 250ms y filtra ruidos impulsivos de tecleo.
+  - Al callarte durante el tiempo configurado (por defecto 1.2s), corta la grabación y lanza el procesamiento de inmediato sin necesidad de volver a pulsar el teclado.
+  - **🔒 Privacidad Garantizada:** Esta función es 100% opcional desde el panel de control. El micrófono **NUNCA** escucha en segundo plano de manera continua; únicamente empieza a escuchar al pulsar tu atajo de teclado, y se apaga automáticamente al detectar silencio. Si lo prefieres desactivado, el modo manual clásico (pulsar para hablar, pulsar para enviar) sigue funcionando intacto.
 
 ### B. Reconocimiento de Voz Local (faster-whisper)
 - Implementado en [src/transcribe.py](file:///home/oscar/nobara-voice-assistant/src/transcribe.py).

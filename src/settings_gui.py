@@ -93,6 +93,8 @@ def load_config():
         "CONTINUOUS_CONVERSATION": "true",
         "ACTIVE_CONVERSATION_ID": "",
         "ASSISTANT_LANGUAGE": "es",
+        "AUTO_STOP_SILENCE": "false",
+        "SILENCE_DURATION": "1.2",
         "AGY_BIN": os.path.expanduser("~/.local/bin/agy")
     }
     if os.path.exists(CONFIG_FILE):
@@ -122,6 +124,8 @@ def save_config(config):
         f'CONTINUOUS_CONVERSATION={config.get("CONTINUOUS_CONVERSATION", "true")}',
         f'ACTIVE_CONVERSATION_ID="{config.get("ACTIVE_CONVERSATION_ID", "")}"',
         f'ASSISTANT_LANGUAGE="{config.get("ASSISTANT_LANGUAGE", "es")}"',
+        f'AUTO_STOP_SILENCE={config.get("AUTO_STOP_SILENCE", "false")}',
+        f'SILENCE_DURATION={config.get("SILENCE_DURATION", "1.2")}',
         ""
     ]
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -474,7 +478,53 @@ class SettingsWindow(QMainWindow):
         stt_layout.addLayout(model_layout)
         layout.addWidget(stt_group)
 
-        # 4. Diagnóstico de Micrófono
+        # 4. Detección Inteligente de Fin de Frase (Auto-Stop VAD)
+        vad_group = QGroupBox("Detección Automática de Fin de Frase (Auto-Stop VAD)")
+        vad_layout = QVBoxLayout(vad_group)
+
+        self.chk_autostop = QCheckBox("Habilitar corte por silencio (Finalizar grabación automáticamente al callar)")
+        self.chk_autostop.setChecked(self.config.get("AUTO_STOP_SILENCE", "false").lower() == "true")
+        self.chk_autostop.toggled.connect(self.on_autostop_toggled)
+        vad_layout.addWidget(self.chk_autostop)
+
+        # Container widget for slider to enable/disable when checkbox is toggled
+        self.silence_container = QWidget()
+        silence_layout = QVBoxLayout(self.silence_container)
+        silence_layout.setContentsMargins(0, 4, 0, 0)
+        silence_layout.setSpacing(4)
+
+        silence_header = QHBoxLayout()
+        silence_label = QLabel("Pausa de silencio requerida para enviar:")
+        self.silence_value_label = QLabel()
+        self.silence_value_label.setStyleSheet("font-weight: bold; color: #3daee9;")
+        silence_header.addWidget(silence_label)
+        silence_header.addStretch()
+        silence_header.addWidget(self.silence_value_label)
+        silence_layout.addLayout(silence_header)
+
+        silence_slider_layout = QHBoxLayout()
+        self.silence_slider = QSlider(Qt.Horizontal)
+        self.silence_slider.setMinimum(8)   # 0.8s
+        self.silence_slider.setMaximum(25)  # 2.5s
+        cur_silence = float(self.config.get("SILENCE_DURATION", "1.2"))
+        slider_val = int(round(cur_silence * 10))
+        self.silence_slider.setValue(slider_val)
+        self.silence_value_label.setText(f"{slider_val / 10.0:.1f} s")
+        self.silence_slider.valueChanged.connect(self.on_silence_slider_changed)
+        silence_slider_layout.addWidget(self.silence_slider)
+        silence_layout.addLayout(silence_slider_layout)
+
+        vad_layout.addWidget(self.silence_container)
+        self.silence_container.setEnabled(self.chk_autostop.isChecked())
+
+        lbl_privacy = QLabel("🔒 Privacidad garantizada: El micrófono NUNCA escucha en segundo plano. Solo se activa al pulsar tu atajo de teclado y se apaga automáticamente al detectar silencio.")
+        lbl_privacy.setStyleSheet("color: #7bc992; font-size: 11px;")
+        lbl_privacy.setWordWrap(True)
+        vad_layout.addWidget(lbl_privacy)
+
+        layout.addWidget(vad_group)
+
+        # 5. Diagnóstico de Micrófono
         mic_group = QGroupBox("Diagnóstico de Micrófono")
         mic_layout = QVBoxLayout(mic_group)
 
@@ -791,6 +841,12 @@ class SettingsWindow(QMainWindow):
             self.lbl_mic_result.setText("⚠️ No se ha detectado voz clara. Comprueba que el micro esté activo.")
             self.lbl_mic_result.setStyleSheet("color: #e5c07b; font-weight: bold;")
 
+    def on_autostop_toggled(self, checked):
+        self.silence_container.setEnabled(checked)
+
+    def on_silence_slider_changed(self, value):
+        self.silence_value_label.setText(f"{value / 10.0:.1f} s")
+
     def save_settings(self):
         model, speaker = self.cmb_voice.currentData()
         self.config["ENABLED"] = "true" if self.chk_enabled.isChecked() else "false"
@@ -802,6 +858,8 @@ class SettingsWindow(QMainWindow):
         self.config["WHISPER_MODEL"] = self.cmb_model.currentData()
         self.config["CONTINUOUS_CONVERSATION"] = "true" if self.chk_continuous.isChecked() else "false"
         self.config["ASSISTANT_LANGUAGE"] = self.cmb_lang.currentData()
+        self.config["AUTO_STOP_SILENCE"] = "true" if self.chk_autostop.isChecked() else "false"
+        self.config["SILENCE_DURATION"] = f"{self.silence_slider.value() / 10.0:.1f}"
 
         save_config(self.config)
 

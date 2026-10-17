@@ -30,6 +30,7 @@ PROCESANDO_WAV="$PROJECT_DIR/voices/procesando.wav"
 TRANSCRIBE_SCRIPT="$PROJECT_DIR/src/transcribe.py"
 SPEAK_SCRIPT="$PROJECT_DIR/src/speak.py"
 AGENT_RUNNER="$PROJECT_DIR/src/agent_runner.py"
+RECORDER_SCRIPT="$PROJECT_DIR/src/recorder.py"
 
 AGY_BIN="${AGY_BIN:-$HOME/.local/bin/agy}"
 WHISPER_MODEL="${WHISPER_MODEL:-base}"
@@ -37,6 +38,8 @@ ENABLE_VOICE_REPLY="${ENABLE_VOICE_REPLY:-true}"
 ENABLE_PROCESSING_VOICE_CUE="${ENABLE_PROCESSING_VOICE_CUE:-true}"
 RESULT_NOTIF_TIMEOUT="${RESULT_NOTIF_TIMEOUT:-15000}"
 ASSISTANT_LANGUAGE="${ASSISTANT_LANGUAGE:-es}"
+AUTO_STOP_SILENCE="${AUTO_STOP_SILENCE:-false}"
+SILENCE_DURATION="${SILENCE_DURATION:-1.2}"
 export TTS_VOLUME="${TTS_VOLUME:-0.35}"
 
 # Check if assistant is disabled in config
@@ -55,7 +58,7 @@ fi
 # STATE 1: ALREADY RECORDING -> STOP & PROCESS
 # ==============================================================================
 if [ -f "$PID_FILE" ]; then
-    RECORD_PID=$(cat "$PID_FILE")
+    RECORD_PID=$(cat "$PID_FILE" 2>/dev/null)
     if [ -n "$RECORD_PID" ] && kill -0 "$RECORD_PID" 2>/dev/null; then
         # 1. Stop recording cleanly
         kill -SIGINT "$RECORD_PID" 2>/dev/null
@@ -65,10 +68,14 @@ if [ -f "$PID_FILE" ]; then
             fi
             sleep 0.1
         done
-        rm -f "$PID_FILE"
+        if kill -0 "$RECORD_PID" 2>/dev/null; then
+            kill -9 "$RECORD_PID" 2>/dev/null
+        fi
+    fi
+    rm -f "$PID_FILE"
 
-        # Release lock so another trigger isn't blocked
-        flock -u 200
+    # Release lock so another trigger isn't blocked
+    flock -u 200
 
         # Retrieve previous notification ID if exists
         NOTIF_ID=""
@@ -160,9 +167,6 @@ if [ -f "$PID_FILE" ]; then
 
         rm -f "$NOTIF_ID_FILE"
         exit 0
-    else
-        rm -f "$PID_FILE"
-    fi
 fi
 
 # ==============================================================================
@@ -177,15 +181,28 @@ fi
 
 # Persistent notification without countdown bar (-t 0)
 if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
-    NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Listening..." "Speak now. Press shortcut again when done.")
+    if [ "$AUTO_STOP_SILENCE" = "true" ]; then
+        NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Listening..." "Speak now. Auto-stops when you pause.")
+    else
+        NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Listening..." "Speak now. Press shortcut again when done.")
+    fi
 else
-    NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Pulsa el atajo de nuevo cuando termines.")
+    if [ "$AUTO_STOP_SILENCE" = "true" ]; then
+        NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Se procesará solo al guardar silencio.")
+    else
+        NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Pulsa el atajo de nuevo cuando termines.")
+    fi
 fi
 echo "$NOTIF_ID" > "$NOTIF_ID_FILE"
 
-# Start PipeWire recording (16kHz mono s16)
-pw-record --rate 16000 --channels 1 --format s16 "$AUDIO_FILE" 200>&- >/dev/null 2>&1 &
-echo $! > "$PID_FILE"
+# Start recording (either intelligent VAD auto-stop or standard pw-record)
+if [ "$AUTO_STOP_SILENCE" = "true" ]; then
+    python3 "$RECORDER_SCRIPT" --output "$AUDIO_FILE" --auto-stop --silence "$SILENCE_DURATION" --trigger-cmd "$SCRIPT_PATH" 200>&- >/dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+else
+    pw-record --rate 16000 --channels 1 --format s16 "$AUDIO_FILE" 200>&- >/dev/null 2>&1 &
+    echo $! > "$PID_FILE"
+fi
 
 # Release lock
 flock -u 200
