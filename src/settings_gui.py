@@ -37,25 +37,43 @@ sys.path.insert(0, os.path.join(PROJECT_DIR, "src"))
 import conversations
 
 AVAILABLE_VOICES = [
+    # Spanish Voices
     {
-        "label": "Hombre - España (DaveFX)",
+        "label": "🇪🇸 Hombre - España (DaveFX)",
         "model": "es_ES-davefx-medium.onnx",
-        "speaker": ""
+        "speaker": "",
+        "lang": "es"
     },
     {
-        "label": "Mujer - España (Sharvard F)",
+        "label": "🇪🇸 Mujer - España (Sharvard F)",
         "model": "es_ES-sharvard-medium.onnx",
-        "speaker": "1"
+        "speaker": "1",
+        "lang": "es"
     },
     {
-        "label": "Hombre - España (Sharvard M)",
+        "label": "🇪🇸 Hombre - España (Sharvard M)",
         "model": "es_ES-sharvard-medium.onnx",
-        "speaker": "0"
+        "speaker": "0",
+        "lang": "es"
     },
     {
-        "label": "Mujer - Natural (Daniela High)",
+        "label": "🇦🇷 Mujer - Natural (Daniela High)",
         "model": "es_AR-daniela-high.onnx",
-        "speaker": ""
+        "speaker": "",
+        "lang": "es"
+    },
+    # English Voices
+    {
+        "label": "🇺🇸 Woman - English US (Lessac Medium)",
+        "model": "en_US-lessac-medium.onnx",
+        "speaker": "",
+        "lang": "en"
+    },
+    {
+        "label": "🇺🇸 Man - English US (Ryan Medium)",
+        "model": "en_US-ryan-medium.onnx",
+        "speaker": "",
+        "lang": "en"
     }
 ]
 
@@ -74,6 +92,7 @@ def load_config():
         "RESULT_NOTIF_TIMEOUT": "15000",
         "CONTINUOUS_CONVERSATION": "true",
         "ACTIVE_CONVERSATION_ID": "",
+        "ASSISTANT_LANGUAGE": "es",
         "AGY_BIN": os.path.expanduser("~/.local/bin/agy")
     }
     if os.path.exists(CONFIG_FILE):
@@ -102,6 +121,7 @@ def save_config(config):
         f'AGY_BIN="{config.get("AGY_BIN", default_agy)}"',
         f'CONTINUOUS_CONVERSATION={config.get("CONTINUOUS_CONVERSATION", "true")}',
         f'ACTIVE_CONVERSATION_ID="{config.get("ACTIVE_CONVERSATION_ID", "")}"',
+        f'ASSISTANT_LANGUAGE="{config.get("ASSISTANT_LANGUAGE", "es")}"',
         ""
     ]
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -111,12 +131,13 @@ def regenerate_procesando_audio(voice_model, speaker):
     """Regenerate procesando.wav with the selected voice."""
     model_path = os.path.join(VOICES_DIR, voice_model)
     out_wav = os.path.join(VOICES_DIR, "procesando.wav")
+    cue_text = "Processing..." if voice_model.startswith("en_") else "Procesando..."
     cmd = ["python3", "-m", "piper", "--model", model_path, "--output-file", out_wav]
     if speaker and str(speaker).strip():
         cmd.extend(["--speaker", str(speaker).strip()])
     try:
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True)
-        p.communicate("Procesando...")
+        p.communicate(cue_text)
     except Exception as e:
         sys.stderr.write(f"Error regenerating procesando cue: {e}\n")
 
@@ -360,7 +381,26 @@ class SettingsWindow(QMainWindow):
         status_layout.addWidget(self.chk_enabled)
         layout.addWidget(status_group)
 
-        # 2. Voz y Volumen
+        # 2. Idioma del Asistente (Bilingual / Language Selector)
+        lang_group = QGroupBox("Idioma y Región / Assistant Language")
+        lang_layout = QVBoxLayout(lang_group)
+        lang_row = QHBoxLayout()
+        lang_label = QLabel("Idioma (Reconocimiento STT y Respuestas de AGY):")
+        self.cmb_lang = QComboBox()
+        self.cmb_lang.addItem("🇪🇸 Español (Spanish)", "es")
+        self.cmb_lang.addItem("🇺🇸 English (Inglés)", "en")
+        cur_lang = self.config.get("ASSISTANT_LANGUAGE", "es")
+        idx = self.cmb_lang.findData(cur_lang)
+        if idx >= 0:
+            self.cmb_lang.setCurrentIndex(idx)
+        self.cmb_lang.currentIndexChanged.connect(self.on_language_changed)
+
+        lang_row.addWidget(lang_label)
+        lang_row.addWidget(self.cmb_lang, 1)
+        lang_layout.addLayout(lang_row)
+        layout.addWidget(lang_group)
+
+        # 3. Voz y Volumen
         voice_group = QGroupBox("Voz y Volumen (TTS)")
         voice_layout = QVBoxLayout(voice_group)
 
@@ -669,6 +709,21 @@ class SettingsWindow(QMainWindow):
             f"Se ha fijado la conversación seleccionada como activa.\nLos siguientes comandos de voz continuarán dentro de este hilo con su memoria previa."
         )
 
+    def on_language_changed(self, index):
+        selected_lang = self.cmb_lang.currentData()
+        current_data = self.cmb_voice.currentData()
+        current_model = current_data[0] if current_data else ""
+        if selected_lang == "en" and not current_model.startswith("en_"):
+            for i, v in enumerate(AVAILABLE_VOICES):
+                if v["model"] == "en_US-lessac-medium.onnx":
+                    self.cmb_voice.setCurrentIndex(i)
+                    break
+        elif selected_lang == "es" and current_model.startswith("en_"):
+            for i, v in enumerate(AVAILABLE_VOICES):
+                if v["model"] == "es_ES-davefx-medium.onnx":
+                    self.cmb_voice.setCurrentIndex(i)
+                    break
+
     # -------------------------------------------------------------------------
     # AUDIO & VOICE TESTING
     # -------------------------------------------------------------------------
@@ -686,7 +741,9 @@ class SettingsWindow(QMainWindow):
 
     def _speak_sample(self, model_path, speaker, volume):
         import speak
-        speak.speak("Hola Óscar, esta es una prueba de mi voz.", model_path=model_path, speaker=speaker, volume=volume)
+        is_en = os.path.basename(model_path).startswith("en_")
+        sample_text = "Hello Oscar, this is a test of my voice." if is_en else "Hola Óscar, esta es una prueba de mi voz."
+        speak.speak(sample_text, model_path=model_path, speaker=speaker, volume=volume)
 
     def start_mic_test(self):
         self.btn_test_mic.setEnabled(False)
@@ -715,8 +772,9 @@ class SettingsWindow(QMainWindow):
             p.kill()
 
         selected_model = self.cmb_model.currentData()
+        selected_lang = self.cmb_lang.currentData()
         res = subprocess.run(
-            ["python3", TRANSCRIBE_SCRIPT, test_wav, selected_model, "es"],
+            ["python3", TRANSCRIBE_SCRIPT, test_wav, selected_model, selected_lang],
             capture_output=True,
             text=True
         )
@@ -743,6 +801,7 @@ class SettingsWindow(QMainWindow):
         self.config["ENABLE_PROCESSING_VOICE_CUE"] = "true" if self.chk_processing_cue.isChecked() else "false"
         self.config["WHISPER_MODEL"] = self.cmb_model.currentData()
         self.config["CONTINUOUS_CONVERSATION"] = "true" if self.chk_continuous.isChecked() else "false"
+        self.config["ASSISTANT_LANGUAGE"] = self.cmb_lang.currentData()
 
         save_config(self.config)
 

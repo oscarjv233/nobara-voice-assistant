@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Download official Piper Spanish voice models (HuggingFace)
+# Download official Piper Spanish & English voice models (HuggingFace)
 # ==============================================================================
 set -e
 
@@ -21,6 +21,7 @@ download_voice() {
 
 echo "==> Comprobando modelos de voz Piper en $VOICES_DIR..."
 
+# --- Spanish Voices (Español) ---
 # 1. DaveFX Medium (Hombre - España)
 download_voice "es_ES-davefx-medium" "es/es_ES/davefx/medium"
 
@@ -29,5 +30,12 @@ download_voice "es_ES-sharvard-medium" "es/es_ES/sharvard/medium"
 
 # 3. Daniela High (Mujer Natural - Argentina/Neutro)
 download_voice "es_AR-daniela-high" "es/es_AR/daniela/high"
+
+# --- English Voices (Inglés) ---
+# 4. Lessac Medium (Woman - US English)
+download_voice "en_US-lessac-medium" "en/en_US/lessac/medium"
+
+# 5. Ryan Medium (Man - US English)
+download_voice "en_US-ryan-medium" "en/en_US/ryan/medium"
 
 echo "==> Voces listas."

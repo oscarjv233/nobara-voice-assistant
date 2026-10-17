@@ -18,6 +18,7 @@ LIVE_STATUS_FILE = "/tmp/nobara_assistant_live.json"
 PID_FILE = "/tmp/nobara_assistant_agent.pid"
 
 RESET_KEYWORDS = [
+    # Spanish keywords
     r"^nueva conversaci[oó]n",
     r"^nuevo tema",
     r"^reinicia(?:r)? (?:la )?conversaci[oó]n",
@@ -27,7 +28,18 @@ RESET_KEYWORDS = [
     r"^olvida lo anterior",
     r"^olvida la conversaci[oó]n",
     r"^limpia(?:r)? (?:el )?contexto",
-    r"^limpia(?:r)? (?:la )?conversaci[oó]n"
+    r"^limpia(?:r)? (?:la )?conversaci[oó]n",
+    # English keywords
+    r"^new conversation",
+    r"^new topic",
+    r"^reset conversation",
+    r"^reset (?:the )?context",
+    r"^start over",
+    r"^start from scratch",
+    r"^forget (?:the )?previous",
+    r"^forget everything",
+    r"^clear (?:the )?context",
+    r"^clear (?:the )?conversation"
 ]
 
 def load_config():
@@ -42,7 +54,8 @@ def load_config():
         "RESULT_NOTIF_TIMEOUT": "15000",
         "AGY_BIN": os.path.expanduser("~/.local/bin/agy"),
         "CONTINUOUS_CONVERSATION": "true",
-        "ACTIVE_CONVERSATION_ID": ""
+        "ACTIVE_CONVERSATION_ID": "",
+        "ASSISTANT_LANGUAGE": "es"
     }
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -124,19 +137,21 @@ def main():
     raw_text = args.text.strip()
     notif_id = args.notif_id
     config = load_config()
+    lang = config.get("ASSISTANT_LANGUAGE", "es").lower()
 
     is_pure_reset, clean_text = check_reset_intent(raw_text)
 
-    # 1. Pure reset intent: user just said "nueva conversación" or similar
+    # 1. Pure reset intent: user just said "nueva conversación" or "new conversation"
     if is_pure_reset:
         update_config_value("ACTIVE_CONVERSATION_ID", "")
+        reset_msg = "Context reset. Started a new conversation." if lang == "en" else "Contexto reiniciado. He iniciado una nueva conversación."
         update_live_status({
             "status": "IDLE",
-            "last_action": "Contexto reiniciado",
-            "last_response": "Contexto reiniciado. He iniciado una nueva conversación.",
+            "last_action": "Context reset" if lang == "en" else "Contexto reiniciado",
+            "last_response": reset_msg,
             "updated_at": time.time()
         })
-        print("Contexto reiniciado. He iniciado una nueva conversación.")
+        print(reset_msg)
         return
 
     # If it was a hybrid reset like "nueva conversación: búscame tal archivo"
@@ -157,24 +172,38 @@ def main():
         update_config_value("ACTIVE_CONVERSATION_ID", "")
 
     # Build AGY command
-    agy_bin = config.get("AGY_BIN", os.path.expanduser("~/.local/bin/agy"))
+    raw_agy = config.get("AGY_BIN", "~/.local/bin/agy")
+    agy_bin = os.path.expandvars(os.path.expanduser(raw_agy))
     cmd = [agy_bin, "--dangerously-skip-permissions", "--output-format", "stream-json"]
 
     if continuous and active_conv_id:
         cmd.extend(["--conversation", active_conv_id])
 
     # Craft the clear, bulletproof prompt with strict KDE Plasma 6 Wayland visual rules
-    prompt = (
-        f"Instrucción de voz del usuario en Nobara Linux (KDE Plasma 6 / Wayland): '{clean_text}'.\n"
-        "REGLAS OBLIGATORIAS:\n"
-        "1. VISUALIZACIÓN EN PANTALLA: Si el usuario pide ver, mostrar, abrir programas, terminales o información gráfica, "
-        "abre ventanas VISIBLES en su escritorio principal con DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- <comando>. "
-        "Si es un comando de consola que el usuario quiere ver en directo (ej. htop, btop, logs, monitores), abre un terminal de Konsole VISIBLE e independiente: "
-        "DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- konsole --separate -e bash -c \"<comando>; echo ''; read -p 'Presiona Enter para cerrar...'\"\n"
-        "NUNCA dejes aplicaciones gráficas en segundo plano ocultas.\n"
-        "2. ACCIONES DEL SISTEMA: Si pide cambiar volumen, pausar, o consultar datos para voz, ejecútalo directamente con bash sin abrir ventanas.\n"
-        "3. RESPUESTA: Responde de forma muy concisa y directa (máximo 1 o 2 frases) ya que tu respuesta se leerá por voz y en notificación."
-    )
+    if lang == "en":
+        prompt = (
+            f"User voice instruction on Nobara Linux (KDE Plasma 6 / Wayland): '{clean_text}'.\n"
+            "MANDATORY RULES:\n"
+            "1. SCREEN VISIBILITY: If the user asks to see, show, open programs, terminals or graphical info, "
+            "open VISIBLE windows on their main desktop using DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- <command>. "
+            "If it's an interactive terminal command (e.g. htop, btop, logs, system stats), open a VISIBLE separate Konsole: "
+            "DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- konsole --separate -e bash -c \"<command>; echo ''; read -p 'Press Enter to close...'\"\n"
+            "NEVER leave graphical apps running hidden in the background.\n"
+            "2. SYSTEM ACTIONS: If the user asks for background actions (volume, music pause, querying RAM/CPU stats for speech), execute directly with bash without opening unnecessary windows.\n"
+            "3. LANGUAGE & CONCISENESS: Respond STRICTLY in English. Keep your response very concise and direct (maximum 1 or 2 sentences) as it will be read aloud by TTS and shown in a notification."
+        )
+    else:
+        prompt = (
+            f"Instrucción de voz del usuario en Nobara Linux (KDE Plasma 6 / Wayland): '{clean_text}'.\n"
+            "REGLAS OBLIGATORIAS:\n"
+            "1. VISUALIZACIÓN EN PANTALLA: Si el usuario pide ver, mostrar, abrir programas, terminales o información gráfica, "
+            "abre ventanas VISIBLES en su escritorio principal con DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- <comando>. "
+            "Si es un comando de consola que el usuario quiere ver en directo (ej. htop, btop, logs, monitores), abre un terminal de Konsole VISIBLE e independiente: "
+            "DISPLAY=:0 WAYLAND_DISPLAY=wayland-0 kstart -- konsole --separate -e bash -c \"<comando>; echo ''; read -p 'Presiona Enter para cerrar...'\"\n"
+            "NUNCA dejes aplicaciones gráficas en segundo plano ocultas.\n"
+            "2. ACCIONES DEL SISTEMA: Si pide cambiar volumen, pausar, o consultar datos para voz, ejecútalo directamente con bash sin abrir ventanas.\n"
+            "3. RESPUESTA: Responde ESTRICTAMENTE en español. Responde de forma muy concisa y directa (máximo 1 o 2 frases) ya que tu respuesta se leerá por voz y en notificación."
+        )
     cmd.extend(["-p", prompt])
 
     # Ensure Wayland / Xwayland graphical environment
@@ -187,21 +216,24 @@ def main():
     env["PATH"] = f"{user_home}/.gemini/antigravity-cli/bin:{user_home}/.local/bin:/usr/local/bin:/usr/bin:/bin:{env.get('PATH', '')}"
 
     start_time = time.time()
+    initial_action = "🧠 Analyzing instruction..." if lang == "en" else "🧠 Analizando orden..."
     live_state = {
         "status": "RUNNING",
         "pid": os.getpid(),
         "started_at": start_time,
         "user_text": clean_text,
-        "conversation_id": active_conv_id or "Iniciando nueva...",
-        "current_action": "🧠 Analizando orden...",
+        "conversation_id": active_conv_id or ("Starting new..." if lang == "en" else "Iniciando nueva..."),
+        "current_action": initial_action,
         "tool_name": "",
         "tool_detail": "",
-        "logs": [f"[{time.strftime('%H:%M:%S')}] Transcripción: '{clean_text}'"]
+        "logs": [f"[{time.strftime('%H:%M:%S')}] {'Input' if lang == 'en' else 'Transcripción'}: '{clean_text}'"]
     }
     update_live_status(live_state)
 
     if notif_id:
-        update_desktop_notif(notif_id, "🧠 Procesando...", f"Interpretando: {clean_text[:40]}...")
+        p_title = "🧠 Processing..." if lang == "en" else "🧠 Procesando..."
+        p_desc = f"Analyzing: {clean_text[:40]}..." if lang == "en" else f"Interpretando: {clean_text[:40]}..."
+        update_desktop_notif(notif_id, p_title, p_desc)
 
     final_response = ""
     assigned_conv_id = active_conv_id
@@ -238,7 +270,7 @@ def main():
                 if continuous and assigned_conv_id:
                     update_config_value("ACTIVE_CONVERSATION_ID", assigned_conv_id)
                 live_state["conversation_id"] = assigned_conv_id
-                live_state["logs"].append(f"[{time.strftime('%H:%M:%S')}] Sesión conectada: {assigned_conv_id[:8]}...")
+                live_state["logs"].append(f"[{time.strftime('%H:%M:%S')}] {'Session connected' if lang == 'en' else 'Sesión conectada'}: {assigned_conv_id[:8]}...")
                 update_live_status(live_state)
 
             elif event == "step_update":
@@ -254,11 +286,11 @@ def main():
                     action_summary = params.get("toolSummary", "") if isinstance(params, dict) else ""
 
                     if cmd_line:
-                        display_action = f"Ejecutando: {cmd_line[:50]}"
+                        display_action = f"{'Executing' if lang == 'en' else 'Ejecutando'}: {cmd_line[:50]}"
                     elif action_summary:
-                        display_action = f"Acción: {action_summary}"
+                        display_action = f"{'Action' if lang == 'en' else 'Acción'}: {action_summary}"
                     else:
-                        display_action = f"Usando {tname}"
+                        display_action = f"{'Using' if lang == 'en' else 'Usando'} {tname}"
 
                     live_state["current_action"] = display_action
                     live_state["tool_name"] = tname
@@ -267,10 +299,11 @@ def main():
                     update_live_status(live_state)
 
                     if notif_id:
-                        update_desktop_notif(notif_id, "⚙️ Ejecutando...", display_action, icon="system-run")
+                        e_title = "⚙️ Executing..." if lang == "en" else "⚙️ Ejecutando..."
+                        update_desktop_notif(notif_id, e_title, display_action, icon="system-run")
 
                 elif stype == "agent_response" and state == "ACTIVE":
-                    live_state["current_action"] = "Generando respuesta..."
+                    live_state["current_action"] = "Generating response..." if lang == "en" else "Generando respuesta..."
                     update_live_status(live_state)
 
             elif event == "result":
@@ -280,7 +313,7 @@ def main():
         proc.wait()
 
     except Exception as e:
-        final_response = f"Error al procesar la instrucción: {e}"
+        final_response = f"Error: {e}" if lang == "en" else f"Error al procesar la instrucción: {e}"
     finally:
         if os.path.exists(PID_FILE):
             try:
@@ -298,7 +331,7 @@ def main():
         final_response = "\n".join(cleaned).strip()
 
         if not final_response:
-            final_response = "Orden completada."
+            final_response = "Order completed." if lang == "en" else "Orden completada."
 
         elapsed = round(time.time() - start_time, 1)
         update_live_status({

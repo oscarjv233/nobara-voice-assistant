@@ -93,15 +93,24 @@ mkdir -p "$PROJECT_DIR/voices"
 
 DEFAULT_VOICE="$PROJECT_DIR/voices/es_ES-davefx-medium.onnx"
 DEFAULT_JSON="$PROJECT_DIR/voices/es_ES-davefx-medium.onnx.json"
+EN_VOICE="$PROJECT_DIR/voices/en_US-lessac-medium.onnx"
+EN_JSON="$PROJECT_DIR/voices/en_US-lessac-medium.onnx.json"
 
 if [ ! -f "$DEFAULT_VOICE" ]; then
     echo "Descargando voz en español por defecto (DaveFX Medium)..."
     curl -L "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx" -o "$DEFAULT_VOICE"
     curl -L "https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json" -o "$DEFAULT_JSON"
-    echo -e "${GREEN}✓ Voz por defecto descargada.${NC}"
-else
-    echo -e "${GREEN}✓ Modelos de voz detectados en voices/.${NC}"
+    echo -e "${GREEN}✓ Voz en español descargada.${NC}"
 fi
+
+if [ ! -f "$EN_VOICE" ]; then
+    echo "Descargando voz en inglés por defecto (Lessac Medium)..."
+    curl -L "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx" -o "$EN_VOICE"
+    curl -L "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" -o "$EN_JSON"
+    echo -e "${GREEN}✓ Voz en inglés descargada.${NC}"
+fi
+
+echo -e "${GREEN}✓ Modelos de voz listos en voices/.${NC}"
 
 # Generar sonido procesando.wav si no existe
 if [ ! -f "$PROJECT_DIR/voices/procesando.wav" ]; then

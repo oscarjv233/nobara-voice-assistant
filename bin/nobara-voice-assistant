@@ -36,6 +36,7 @@ WHISPER_MODEL="${WHISPER_MODEL:-base}"
 ENABLE_VOICE_REPLY="${ENABLE_VOICE_REPLY:-true}"
 ENABLE_PROCESSING_VOICE_CUE="${ENABLE_PROCESSING_VOICE_CUE:-true}"
 RESULT_NOTIF_TIMEOUT="${RESULT_NOTIF_TIMEOUT:-15000}"
+ASSISTANT_LANGUAGE="${ASSISTANT_LANGUAGE:-es}"
 export TTS_VOLUME="${TTS_VOLUME:-0.35}"
 
 # Check if assistant is disabled in config
@@ -84,42 +85,73 @@ if [ -f "$PID_FILE" ]; then
         fi
 
         # 3. Notification update: Processing
-        if [ -n "$NOTIF_ID" ]; then
-            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i system-run -t 0 "🧠 Procesando voz..." "Interpretando lo que has dicho..." >/dev/null 2>&1
+        if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
+            P_TITLE="🧠 Processing voice..."
+            P_BODY="Interpreting what you said..."
         else
-            NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i system-run -t 0 "🧠 Procesando voz..." "Interpretando lo que has dicho...")
+            P_TITLE="🧠 Procesando voz..."
+            P_BODY="Interpretando lo que has dicho..."
+        fi
+
+        if [ -n "$NOTIF_ID" ]; then
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i system-run -t 0 "$P_TITLE" "$P_BODY" >/dev/null 2>&1
+        else
+            NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i system-run -t 0 "$P_TITLE" "$P_BODY")
             echo "$NOTIF_ID" > "$NOTIF_ID_FILE"
         fi
 
-        # 4. Transcribe locally with Whisper
+        # 4. Transcribe locally with Whisper (passing configured language)
         if [ ! -f "$AUDIO_FILE" ] || [ ! -s "$AUDIO_FILE" ]; then
-            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ Asistente IA" "No se detectó audio."
+            NO_AUDIO_TITLE="🎙️ AI Assistant"
+            NO_AUDIO_BODY="No audio detected."
+            if [ "$ASSISTANT_LANGUAGE" != "en" ]; then
+                NO_AUDIO_TITLE="🎙️ Asistente IA"
+                NO_AUDIO_BODY="No se detectó audio."
+            fi
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "$NO_AUDIO_TITLE" "$NO_AUDIO_BODY"
             exit 0
         fi
 
-        TEXT=$(python3 "$TRANSCRIBE_SCRIPT" "$AUDIO_FILE" "$WHISPER_MODEL" "es" 2>/tmp/nobara_assistant_stt.log)
+        TEXT=$(python3 "$TRANSCRIBE_SCRIPT" "$AUDIO_FILE" "$WHISPER_MODEL" "$ASSISTANT_LANGUAGE" 2>/tmp/nobara_assistant_stt.log)
         TEXT=$(echo "$TEXT" | tr -d '\r' | sed 's/^[ \t]*//;s/[ \t]*$//')
 
         if [ -z "$TEXT" ]; then
-            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ Asistente IA" "No se detectó ninguna instrucción clara."
+            if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
+                notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ AI Assistant" "No clear speech detected."
+                FALLBACK_VOICE="I didn't catch that."
+            else
+                notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-warning -t 5000 "🎙️ Asistente IA" "No se detectó ninguna instrucción clara."
+                FALLBACK_VOICE="No te he entendido bien."
+            fi
             if [ "$ENABLE_VOICE_REPLY" = "true" ]; then
-                python3 "$SPEAK_SCRIPT" "No te he entendido bien." 200>&- >/dev/null 2>&1 &
+                python3 "$SPEAK_SCRIPT" "$FALLBACK_VOICE" 200>&- >/dev/null 2>&1 &
             fi
             exit 0
         fi
 
         # 5. Show what was transcribed
-        notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🗣️ Has dicho:" "$TEXT\n\n(Ejecutando...)" >/dev/null 2>&1
+        if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🗣️ You said:" "$TEXT\n\n(Executing...)" >/dev/null 2>&1
+        else
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🗣️ Has dicho:" "$TEXT\n\n(Ejecutando...)" >/dev/null 2>&1
+        fi
 
         # 6. Execute action with Antigravity via AGENT_RUNNER (Live feedback + Session management)
         CLEAN_RESPONSE=$(python3 "$AGENT_RUNNER" --text "$TEXT" --notif-id "$NOTIF_ID" 2>&1)
 
         if [ -z "$CLEAN_RESPONSE" ]; then
-            CLEAN_RESPONSE="Orden completada."
+            CLEAN_RESPONSE="Order completed."
+            if [ "$ASSISTANT_LANGUAGE" != "en" ]; then
+                CLEAN_RESPONSE="Orden completada."
+            fi
         fi
 
         # 7. Final Notification
-        notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-ok -t "$RESULT_NOTIF_TIMEOUT" "🤖 Asistente Nobara" "$CLEAN_RESPONSE"
+        NOTIF_FINAL_TITLE="🤖 Nobara Assistant"
+        if [ "$ASSISTANT_LANGUAGE" != "en" ]; then
+            NOTIF_FINAL_TITLE="🤖 Asistente Nobara"
+        fi
+        notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-ok -t "$RESULT_NOTIF_TIMEOUT" "$NOTIF_FINAL_TITLE" "$CLEAN_RESPONSE"
 
         # 8. Voice Response (TTS at controlled stream volume)
         if [ "$ENABLE_VOICE_REPLY" = "true" ]; then
@@ -144,7 +176,11 @@ if [ -f "$SOUND_START" ]; then
 fi
 
 # Persistent notification without countdown bar (-t 0)
-NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Pulsa el atajo de nuevo cuando termines.")
+if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
+    NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Listening..." "Speak now. Press shortcut again when done.")
+else
+    NOTIF_ID=$(notify-send -p -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🎙️ Escuchando..." "Habla ahora. Pulsa el atajo de nuevo cuando termines.")
+fi
 echo "$NOTIF_ID" > "$NOTIF_ID_FILE"
 
 # Start PipeWire recording (16kHz mono s16)

@@ -169,6 +169,8 @@ Las voces se encuentran en el directorio `voices/` en formato ONNX. Actualmente 
 | **Mujer - España (Sharvard F)** | `es_ES-sharvard-medium.onnx` | `1` | Femenina, acento de España. |
 | **Hombre - España (Sharvard M)** | `es_ES-sharvard-medium.onnx` | `0` | Masculina alternativa. |
 | **Mujer - Natural (Daniela High)** | `es_AR-daniela-high.onnx` | *Por defecto* | Femenina, alta definición y fluidez. |
+| **Woman - English US (Lessac Medium)** | `en_US-lessac-medium.onnx` | *Por defecto EN* | Femenina en inglés estadounidense, clara y natural. |
+| **Man - English US (Ryan Medium)** | `en_US-ryan-medium.onnx` | *Por defecto EN* | Masculina en inglés estadounidense, tono profundo. |
 
 ### ¿Cómo añadir más voces de Piper en el futuro?
 1. Descarga el modelo `.onnx` y su `.onnx.json` desde el repositorio oficial de [HuggingFace rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices).
