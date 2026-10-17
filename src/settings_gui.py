@@ -95,6 +95,10 @@ def load_config():
         "ASSISTANT_LANGUAGE": "es",
         "AUTO_STOP_SILENCE": "false",
         "SILENCE_DURATION": "1.2",
+        "AUDIO_DUCKING": "false",
+        "WAKE_WORD_ENABLED": "false",
+        "WAKE_WORD_MODEL": "hey_jarvis",
+        "OVERLAY_HUD_ENABLED": "true",
         "AGY_BIN": os.path.expanduser("~/.local/bin/agy")
     }
     if os.path.exists(CONFIG_FILE):
@@ -126,6 +130,10 @@ def save_config(config):
         f'ASSISTANT_LANGUAGE="{config.get("ASSISTANT_LANGUAGE", "es")}"',
         f'AUTO_STOP_SILENCE={config.get("AUTO_STOP_SILENCE", "false")}',
         f'SILENCE_DURATION={config.get("SILENCE_DURATION", "1.2")}',
+        f'AUDIO_DUCKING={config.get("AUDIO_DUCKING", "false")}',
+        f'WAKE_WORD_ENABLED={config.get("WAKE_WORD_ENABLED", "false")}',
+        f'WAKE_WORD_MODEL="{config.get("WAKE_WORD_MODEL", "hey_jarvis")}"',
+        f'OVERLAY_HUD_ENABLED={config.get("OVERLAY_HUD_ENABLED", "true")}',
         ""
     ]
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -456,6 +464,10 @@ class SettingsWindow(QMainWindow):
         self.chk_processing_cue.setChecked(self.config.get("ENABLE_PROCESSING_VOICE_CUE", "true").lower() == "true")
         voice_layout.addWidget(self.chk_processing_cue)
 
+        self.chk_ducking = QCheckBox("🎮 Modo Gaming (Audio Ducking): Atenuar música/juego al 45% mientras el asistente habla")
+        self.chk_ducking.setChecked(self.config.get("AUDIO_DUCKING", "false").lower() == "true")
+        voice_layout.addWidget(self.chk_ducking)
+
         layout.addWidget(voice_group)
 
         # 3. Reconocimiento (Whisper)
@@ -517,12 +529,56 @@ class SettingsWindow(QMainWindow):
         vad_layout.addWidget(self.silence_container)
         self.silence_container.setEnabled(self.chk_autostop.isChecked())
 
-        lbl_privacy = QLabel("🔒 Privacidad garantizada: El micrófono NUNCA escucha en segundo plano. Solo se activa al pulsar tu atajo de teclado y se apaga automáticamente al detectar silencio.")
+        lbl_privacy = QLabel("🔒 Privacidad garantizada: El micrófono NUNCA escucha en segundo plano sin pulsar el atajo o activar la palabra clave.")
         lbl_privacy.setStyleSheet("color: #7bc992; font-size: 11px;")
         lbl_privacy.setWordWrap(True)
         vad_layout.addWidget(lbl_privacy)
 
         layout.addWidget(vad_group)
+
+        # 5. Activación Manos Libres (Wake Word)
+        wake_group = QGroupBox("Activación Manos Libres (Wake Word)")
+        wake_layout = QVBoxLayout(wake_group)
+
+        self.chk_wakeword = QCheckBox("🗣️ Habilitar escucha de palabra clave en segundo plano (openWakeWord)")
+        self.chk_wakeword.setChecked(self.config.get("WAKE_WORD_ENABLED", "false").lower() == "true")
+        wake_layout.addWidget(self.chk_wakeword)
+
+        wake_row = QHBoxLayout()
+        wake_label = QLabel("Palabra clave para activar:")
+        self.cmb_wakeword = QComboBox()
+        self.cmb_wakeword.addItem("Hey Jarvis (Recomendado)", "hey_jarvis")
+        self.cmb_wakeword.addItem("Alexa", "alexa")
+        self.cmb_wakeword.addItem("Hey Mycroft", "hey_mycroft")
+        cur_wake = self.config.get("WAKE_WORD_MODEL", "hey_jarvis")
+        idx_wake = self.cmb_wakeword.findData(cur_wake)
+        if idx_wake >= 0:
+            self.cmb_wakeword.setCurrentIndex(idx_wake)
+
+        wake_row.addWidget(wake_label)
+        wake_row.addWidget(self.cmb_wakeword, 1)
+        wake_layout.addLayout(wake_row)
+
+        lbl_wake_priv = QLabel("🔒 Procesamiento 100% local con openWakeWord y ONNX. Consume <1% de CPU y no envía audio a internet.")
+        lbl_wake_priv.setStyleSheet("color: #7bc992; font-size: 11px;")
+        lbl_wake_priv.setWordWrap(True)
+        wake_layout.addWidget(lbl_wake_priv)
+
+        layout.addWidget(wake_group)
+
+        # 6. Interfaz Visual & Overlay HUD
+        hud_group = QGroupBox("Interfaz Visual en Pantalla")
+        hud_layout = QVBoxLayout(hud_group)
+
+        self.chk_hud = QCheckBox("🔮 Mostrar Cápsula Flotante en Pantalla (Overlay HUD / Dynamic Island)")
+        self.chk_hud.setChecked(self.config.get("OVERLAY_HUD_ENABLED", "true").lower() == "true")
+        hud_layout.addWidget(self.chk_hud)
+
+        lbl_hud_desc = QLabel("Muestra una barra translúcida en la parte superior sin robar foco del teclado ni interrumpir tus juegos.")
+        lbl_hud_desc.setStyleSheet("color: #888; font-size: 11px;")
+        hud_layout.addWidget(lbl_hud_desc)
+
+        layout.addWidget(hud_group)
 
         # 5. Diagnóstico de Micrófono
         mic_group = QGroupBox("Diagnóstico de Micrófono")
@@ -860,8 +916,24 @@ class SettingsWindow(QMainWindow):
         self.config["ASSISTANT_LANGUAGE"] = self.cmb_lang.currentData()
         self.config["AUTO_STOP_SILENCE"] = "true" if self.chk_autostop.isChecked() else "false"
         self.config["SILENCE_DURATION"] = f"{self.silence_slider.value() / 10.0:.1f}"
+        self.config["AUDIO_DUCKING"] = "true" if self.chk_ducking.isChecked() else "false"
+        self.config["WAKE_WORD_ENABLED"] = "true" if self.chk_wakeword.isChecked() else "false"
+        self.config["WAKE_WORD_MODEL"] = self.cmb_wakeword.currentData()
+        self.config["OVERLAY_HUD_ENABLED"] = "true" if self.chk_hud.isChecked() else "false"
 
         save_config(self.config)
+
+        # Control Wake Word daemon
+        if self.chk_wakeword.isChecked():
+            subprocess.Popen([os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant-wakeword"), "start"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.Popen([os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant-wakeword"), "stop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Control Overlay HUD daemon
+        if self.chk_hud.isChecked():
+            subprocess.Popen([os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant-hud")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(["pkill", "-f", "overlay_hud.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         # Regenerate procesando cue in background with new voice
         threading.Thread(target=lambda: regenerate_procesando_audio(model, speaker), daemon=True).start()

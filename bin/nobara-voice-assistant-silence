@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Panic Button / Quick Voice Mute
+# Immediately stops assistant TTS playback and clears notification
+PROJECT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+exec "$PROJECT_DIR/bin/nobara-voice-assistant" --silence

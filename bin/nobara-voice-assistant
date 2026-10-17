@@ -31,6 +31,20 @@ TRANSCRIBE_SCRIPT="$PROJECT_DIR/src/transcribe.py"
 SPEAK_SCRIPT="$PROJECT_DIR/src/speak.py"
 AGENT_RUNNER="$PROJECT_DIR/src/agent_runner.py"
 RECORDER_SCRIPT="$PROJECT_DIR/src/recorder.py"
+FAST_PATH_SCRIPT="$PROJECT_DIR/src/fast_path.py"
+
+# Panic / Silence Button handler: kill ongoing speech and dismiss notification immediately
+if [ "$1" = "--silence" ] || [ "$1" = "--stop" ] || [ "$1" = "-s" ]; then
+    pkill -f "speak.py" 2>/dev/null || true
+    pkill -f "piper" 2>/dev/null || true
+    pkill -f "pw-play" 2>/dev/null || true
+    if [ -f "$NOTIF_ID_FILE" ]; then
+        N_ID=$(cat "$NOTIF_ID_FILE" 2>/dev/null)
+        [ -n "$N_ID" ] && notify-send -C "$N_ID" 2>/dev/null || true
+        rm -f "$NOTIF_ID_FILE"
+    fi
+    exit 0
+fi
 
 AGY_BIN="${AGY_BIN:-$HOME/.local/bin/agy}"
 WHISPER_MODEL="${WHISPER_MODEL:-base}"
@@ -40,6 +54,7 @@ RESULT_NOTIF_TIMEOUT="${RESULT_NOTIF_TIMEOUT:-15000}"
 ASSISTANT_LANGUAGE="${ASSISTANT_LANGUAGE:-es}"
 AUTO_STOP_SILENCE="${AUTO_STOP_SILENCE:-false}"
 SILENCE_DURATION="${SILENCE_DURATION:-1.2}"
+AUDIO_DUCKING="${AUDIO_DUCKING:-false}"
 export TTS_VOLUME="${TTS_VOLUME:-0.35}"
 
 # Check if assistant is disabled in config
@@ -136,6 +151,21 @@ if [ -f "$PID_FILE" ]; then
             exit 0
         fi
 
+        # 4.5. Fast Path Check (Instant multimedia & system actions in <30ms)
+        FAST_RES=$(python3 "$FAST_PATH_SCRIPT" "$TEXT" "$ASSISTANT_LANGUAGE" 2>/dev/null)
+        IS_FAST=$(echo "$FAST_RES" | jq -r '.handled' 2>/dev/null)
+        if [ "$IS_FAST" = "true" ]; then
+            FAST_REPLY=$(echo "$FAST_RES" | jq -r '.reply' 2>/dev/null)
+            FAST_TITLE=$(echo "$FAST_RES" | jq -r '.title' 2>/dev/null)
+            notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-ok -t 4000 "$FAST_TITLE" "$FAST_REPLY"
+            echo "{\"title\": \"$FAST_TITLE\", \"reply\": \"$FAST_REPLY\"}" > /tmp/nobara_assistant_hud.json 2>/dev/null || true
+            if [ "$ENABLE_VOICE_REPLY" = "true" ]; then
+                python3 "$SPEAK_SCRIPT" "$FAST_REPLY" 200>&- >/dev/null 2>&1 &
+            fi
+            rm -f "$NOTIF_ID_FILE"
+            exit 0
+        fi
+
         # 5. Show what was transcribed
         if [ "$ASSISTANT_LANGUAGE" = "en" ]; then
             notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i audio-input-microphone -t 0 "🗣️ You said:" "$TEXT\n\n(Executing...)" >/dev/null 2>&1
@@ -159,6 +189,7 @@ if [ -f "$PID_FILE" ]; then
             NOTIF_FINAL_TITLE="🤖 Asistente Nobara"
         fi
         notify-send -r "$NOTIF_ID" -a "AI Voice Assistant" -i dialog-ok -t "$RESULT_NOTIF_TIMEOUT" "$NOTIF_FINAL_TITLE" "$CLEAN_RESPONSE"
+        echo "{\"title\": \"$NOTIF_FINAL_TITLE\", \"reply\": \"$CLEAN_RESPONSE\"}" > /tmp/nobara_assistant_hud.json 2>/dev/null || true
 
         # 8. Voice Response (TTS at controlled stream volume)
         if [ "$ENABLE_VOICE_REPLY" = "true" ]; then

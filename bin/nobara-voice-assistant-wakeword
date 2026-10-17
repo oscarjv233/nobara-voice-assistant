@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Nobara AI Voice Assistant - Wake Word Controller (Start / Stop / Status)
+# ==============================================================================
+PROJECT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+PIDFILE="/tmp/nobara_assistant_wakeword.pid"
+
+case "$1" in
+    start)
+        if [ -f "$PIDFILE" ]; then
+            PID=$(cat "$PIDFILE" 2>/dev/null)
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+                echo "Wake Word daemon is already running (PID $PID)."
+                exit 0
+            fi
+        fi
+        echo "Starting Wake Word daemon..."
+        python3 "$PROJECT_DIR/src/wakeword.py" >/dev/null 2>&1 &
+        echo "Wake Word daemon started."
+        ;;
+    stop)
+        if [ -f "$PIDFILE" ]; then
+            PID=$(cat "$PIDFILE" 2>/dev/null)
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+                kill -SIGINT "$PID" 2>/dev/null
+                echo "Wake Word daemon stopped (PID $PID)."
+            fi
+            rm -f "$PIDFILE"
+        else
+            echo "Wake Word daemon is not running."
+        fi
+        ;;
+    status)
+        if [ -f "$PIDFILE" ]; then
+            PID=$(cat "$PIDFILE" 2>/dev/null)
+            if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+                echo "RUNNING (PID $PID)"
+                exit 0
+            fi
+        fi
+        echo "STOPPED"
+        ;;
+    *)
+        # Default: toggle
+        if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null; then
+            "$0" stop
+        else
+            "$0" start
+        fi
+        ;;
+esac

@@ -59,6 +59,24 @@ def clean_markdown(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
+def get_sink_volume():
+    try:
+        res = subprocess.run(["wpctl", "get-volume", "@DEFAULT_AUDIO_SINK@"], capture_output=True, text=True)
+        m = re.search(r"Volume:\s+([0-9\.]+)", res.stdout)
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return None
+
+def is_audio_ducking_enabled():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("AUDIO_DUCKING="):
+                    return line.split("=", 1)[1].strip().strip('"').strip("'").lower() == "true"
+    return False
+
 def speak(text, model_path=None, speaker=None, volume=None):
     if not text or not text.strip():
         return
@@ -91,11 +109,26 @@ def speak(text, model_path=None, speaker=None, volume=None):
         proc.communicate(input=cleaned)
 
         if os.path.exists(OUTPUT_WAV) and os.path.getsize(OUTPUT_WAV) > 0:
-            subprocess.run(
-                ["pw-play", f"--volume={volume}", OUTPUT_WAV],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
+            # Audio Ducking: temporarily lower background media if enabled
+            ducked = False
+            orig_vol = None
+            if is_audio_ducking_enabled():
+                orig_vol = get_sink_volume()
+                if orig_vol is not None and orig_vol > 0.15:
+                    duck_vol = max(0.1, round(orig_vol * 0.45, 2))
+                    subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", str(duck_vol)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    ducked = True
+
+            try:
+                subprocess.run(
+                    ["pw-play", f"--volume={volume}", OUTPUT_WAV],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            finally:
+                if ducked and orig_vol is not None:
+                    subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", str(orig_vol)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     except Exception as e:
         sys.stderr.write(f"TTS Error: {e}\n")
 

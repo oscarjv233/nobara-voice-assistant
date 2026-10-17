@@ -47,7 +47,7 @@ def main():
     CHUNK_DURATION = 0.05
     CHUNK_BYTES = 1600
 
-    cmd = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "-"]
+    cmd = ["pw-record", "--rate", "16000", "--channels", "1", "--format", "s16", "--container", "raw", "-"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     wf = wave.open(out_path, "wb")
@@ -57,8 +57,10 @@ def main():
 
     start_time = time.time()
     noise_samples = []
-    noise_floor = 180.0
-    speech_threshold = 400.0
+    noise_floor = 300.0
+    speech_threshold = 800.0
+    silence_threshold = 450.0
+    peak_speech_rms = 1200.0
     has_spoken = False
     consecutive_voice_chunks = 0
     silence_elapsed = 0.0
@@ -86,10 +88,9 @@ def main():
                 if len(noise_samples) < 5:
                     noise_samples.append(rms)
                     if len(noise_samples) == 5:
-                        # Cap noise floor at 450.0 so starting to speak early doesn't make threshold impossible
-                        noise_floor = min(float(np.mean(noise_samples)), 450.0)
-                        # Adaptive threshold: at least 350.0, or 2.0x ambient noise, capped at 850.0
-                        speech_threshold = max(350.0, min(noise_floor * 2.0, 850.0))
+                        noise_floor = max(150.0, min(float(np.mean(noise_samples)), 800.0))
+                        speech_threshold = max(750.0, noise_floor * 2.2)
+                        silence_threshold = max(350.0, noise_floor * 1.5)
                     continue
 
                 # Phase 2: Detect speech onset & silence
@@ -100,21 +101,25 @@ def main():
                         if consecutive_voice_chunks >= 2:
                             has_spoken = True
                             silence_elapsed = 0.0
+                            peak_speech_rms = max(peak_speech_rms, rms)
+                            silence_threshold = max(350.0, min(noise_floor * 1.5, peak_speech_rms * 0.4))
                     else:
                         consecutive_voice_chunks = 0
-                        # If user hasn't started speaking within 7 seconds, auto-stop
-                        if elapsed > 7.0:
-                            auto_triggered = True
+                        # If user hasn't started speaking within 8 seconds, auto-stop
+                        if elapsed > 8.0:
                             break
                 else:
-                    if rms < speech_threshold:
+                    if rms > silence_threshold:
+                        # User is speaking
+                        silence_elapsed = 0.0
+                        peak_speech_rms = max(peak_speech_rms, rms)
+                        silence_threshold = max(350.0, min(noise_floor * 1.5, peak_speech_rms * 0.4))
+                    else:
+                        # User paused / silent
                         silence_elapsed += CHUNK_DURATION
                         if silence_elapsed >= silence_limit:
                             auto_triggered = True
                             break
-                    else:
-                        # Reset silence counter if user resumes talking
-                        silence_elapsed = 0.0
 
     finally:
         # Clean shutdown

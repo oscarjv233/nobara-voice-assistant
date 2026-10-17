@@ -76,11 +76,11 @@ fi
 # ------------------------------------------------------------------------------
 echo ""
 echo -e "${YELLOW}[2/6] Instalando dependencias de Python...${NC}"
-echo "Instalando faster-whisper, piper-tts, PySide6 y numpy..."
+echo "Instalando faster-whisper, piper-tts, PySide6, numpy y openwakeword..."
 
 # Install python dependencies with pip (user-level)
-python3 -m pip install --upgrade --user faster-whisper piper-tts PySide6 numpy sounddevice 2>/dev/null || \
-pip install --upgrade faster-whisper piper-tts PySide6 numpy sounddevice
+python3 -m pip install --upgrade --user faster-whisper piper-tts PySide6 numpy sounddevice openwakeword 2>/dev/null || \
+pip install --upgrade faster-whisper piper-tts PySide6 numpy sounddevice openwakeword
 
 echo -e "${GREEN}✓ Dependencias de Python instaladas correctamente.${NC}"
 
@@ -139,6 +139,10 @@ ACTIVE_CONVERSATION_ID=""
 ASSISTANT_LANGUAGE="es"
 AUTO_STOP_SILENCE=false
 SILENCE_DURATION=1.2
+AUDIO_DUCKING=false
+WAKE_WORD_ENABLED=false
+WAKE_WORD_MODEL="hey_jarvis"
+OVERLAY_HUD_ENABLED=true
 EOF
 fi
 
@@ -224,10 +228,20 @@ chmod +x "$PROJECT_DIR/bin/"* "$PROJECT_DIR/src/"*.py "$PROJECT_DIR/"*.sh 2>/dev
 # Enlaces simbólicos
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant" "$HOME/.local/bin/nobara-voice-assistant"
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-settings" "$HOME/.local/bin/nobara-voice-assistant-settings"
+ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-tray" "$HOME/.local/bin/nobara-voice-assistant-tray"
+ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-silence" "$HOME/.local/bin/nobara-voice-assistant-silence"
+ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-wakeword" "$HOME/.local/bin/nobara-voice-assistant-wakeword"
+ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-hud" "$HOME/.local/bin/nobara-voice-assistant-hud"
 
 # Enlaces .desktop
 ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant.desktop" "$HOME/.local/share/applications/nobara-voice-assistant.desktop"
 ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant-settings.desktop" "$HOME/.local/share/applications/nobara-voice-assistant-settings.desktop"
+ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant-tray.desktop" "$HOME/.local/share/applications/nobara-voice-assistant-tray.desktop"
+ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant-silence.desktop" "$HOME/.local/share/applications/nobara-voice-assistant-silence.desktop"
+
+# Autostart para la bandeja del sistema
+mkdir -p "$HOME/.config/autostart"
+ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant-tray.desktop" "$HOME/.config/autostart/nobara-voice-assistant-tray.desktop"
 
 # Actualizar base de datos de escritorio si existe
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true

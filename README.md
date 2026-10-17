@@ -85,25 +85,37 @@ nobara-voice-assistant/
 ├── README.md                          # Documentación completa
 ├── bin/
 │   ├── nobara-voice-assistant         # Script ejecutable principal (gestión de estados toggle)
-│   └── nobara-voice-assistant-settings# Lanzador de la aplicación gráfica de ajustes
+│   ├── nobara-voice-assistant-settings# Lanzador de la aplicación gráfica de ajustes
+│   ├── nobara-voice-assistant-tray    # Lanzador de la bandeja del sistema (System Tray)
+│   ├── nobara-voice-assistant-silence # Atajo de pánico para silenciar audio inmediatamente
+│   ├── nobara-voice-assistant-wakeword# Controlador del demonio Wake Word manos libres
+│   └── nobara-voice-assistant-hud     # Lanzador de la cápsula flotante en pantalla (Overlay HUD)
 ├── src/
+│   ├── fast_path.py                   # Comandos rápidos (<30ms): volumen, multimedia MPRIS y hardware
 │   ├── recorder.py                    # Grabador inteligente PipeWire con detección de fin de frase (Auto-Stop VAD)
 │   ├── transcribe.py                  # Motor STT: faster-whisper con ganancia adaptativa
-│   ├── speak.py                       # Motor TTS: Piper neural, limpiador markdown y volumen de stream
+│   ├── speak.py                       # Motor TTS: Piper neural, Audio Ducking y volumen de stream
 │   ├── agent_runner.py                # Ejecutor de AGY con streaming live, monitor de tareas y memoria de sesión
 │   ├── conversations.py               # Parser de transcripciones de brain e historial de conversaciones
-│   └── settings_gui.py                # Panel de control gráfico en PySide6 con 2 pestañas (Voz + Historial/Monitor)
+│   ├── settings_gui.py                # Panel de control gráfico en PySide6 con 2 pestañas (Voz + Historial/Monitor)
+│   ├── tray.py                        # App nativa para la bandeja del sistema de KDE Plasma 6
+│   ├── wakeword.py                    # Detección continua de palabras clave ("Hey Jarvis", "Alexa")
+│   └── overlay_hud.py                 # Ventana flotante estilo Dynamic Island translúcida
 ├── voices/
 │   ├── es_ES-davefx-medium.onnx       # Voz: Hombre (España - DaveFX)
 │   ├── es_ES-sharvard-medium.onnx     # Voz: Mujer (spk 1) y Hombre (spk 0) (España - Sharvard)
 │   ├── es_AR-daniela-high.onnx        # Voz: Mujer (Español Neutro/Natural - Daniela High)
+│   ├── en_US-lessac-medium.onnx       # Voz: Mujer (Inglés US - Lessac Medium)
+│   ├── en_US-ryan-medium.onnx         # Voz: Hombre (Inglés US - Ryan Medium)
 │   └── procesando.wav                 # Audio pre-renderizado de confirmación inmediata
 ├── desktop/
 │   ├── nobara-voice-assistant.desktop # Acceso para atajos globales de KDE Plasma
-│   └── nobara-voice-assistant-settings.desktop # Acceso al panel de control en el menú de inicio
+│   ├── nobara-voice-assistant-settings.desktop # Acceso al panel de control en el menú de inicio
+│   ├── nobara-voice-assistant-tray.desktop # Acceso e inicio automático de la bandeja
+│   └── nobara-voice-assistant-silence.desktop # Acceso para el atajo de silenciar voz
 ├── config/
-│   └── config.env                     # Variables de configuración persistentes (sesión activa, volumen, etc.)
-├── install.sh                         # Enlazador de binarios a ~/.local/bin y aplicaciones
+│   └── config.env                     # Variables de configuración persistentes
+├── install.sh                         # Instalador automático para cualquier máquina
 └── README.md                          # Este documento
 ```
 
@@ -146,13 +158,50 @@ nobara-voice-assistant/
 
 ### E. Panel Gráfico de Control e Historial (PySide6 / Qt6)
 - Implementado en [src/settings_gui.py](file:///home/oscar/nobara-voice-assistant/src/settings_gui.py).
-- **Pestaña 1 (Ajustes de Voz):** Habilitar/deshabilitar, selector de voces Piper, volumen independiente con preview, modelos Whisper y test de micrófono en directo.
+- **Pestaña 1 (Ajustes de Voz):** Habilitar/deshabilitar, selector de voces Piper, volumen independiente con preview, modelos Whisper, Auto-Stop VAD, Modo Gaming (Audio Ducking), Wake Word manos libres y activación del HUD flotante.
 - **Pestaña 2 (Historial y Sesiones):**
   - **Monitor en Vivo:** Muestra si el asistente está en reposo o ejecutando una tarea (tiempo transcurrido, comando ejecutado y botón para cancelar la tarea si se quedara pillada).
   - **Gestor de Sesión:** Checkbox para modo continuo, visualizador de sesión activa y botón `➕ Iniciar Nueva Conversación`.
   - **Historial Completo:** Lista de conversaciones guardadas con visor detallado estilo chat (turnos, comandos ejecutados y respuestas). Botón `▶️ Retomar esta conversación`.
-- Usa la biblioteca nativa Qt6, adoptando automáticamente el tema oscuro y estilo visual de KDE Plasma 6.
-- Incluye prueba de micrófono interactiva en vivo que muestra en verde el texto reconocido.
+
+### F. Comandos Multimedia y Sistema Instantáneos ("Fast Path" en <30ms) ⚡
+- Implementado en [src/fast_path.py](file:///home/oscar/nobara-voice-assistant/src/fast_path.py).
+- Evalúa localmente frases comunes antes de invocar a la IA, respondiendo en **menos de 30 milisegundos**:
+  - **Control de Música (MPRIS / Spotify / Navegador):** *"pausa la música"*, *"siguiente canción"*, *"canción anterior"*, *"reanuda la música"*.
+  - **Volumen y Audio (PipeWire wpctl):** *"sube el volumen"*, *"baja el volumen"*, *"volumen al 70%"*, *"silencia el audio"*, *"silencia el micrófono"*.
+  - **Estado Gamer y Hardware Nobara:** *"¿cómo va la gráfica?"*, *"temperatura de la gráfica/CPU"*. Consulta instantáneamente `sensors` y canta los grados y estado.
+  - **Sistema:** *"bloquea la pantalla"*, *"¿qué hora es?"*, *"¿qué día es hoy?"*.
+- Si la frase es compleja o requiere razonamiento, viaja a Antigravity AGY con toda su potencia.
+
+### G. Icono en la Bandeja del Sistema (KDE Plasma 6 System Tray) 🎛️
+- Implementado en [src/tray.py](file:///home/oscar/nobara-voice-assistant/src/tray.py).
+- Se integra en la barra junto al reloj con iconos dinámicos según el estado:
+  - 🟢 **Verde**: En reposo (Idle).
+  - 🔴 **Rojo**: Grabando voz del micrófono (Recording).
+  - 🔵 **Azul**: Procesando o ejecutando orden (Thinking).
+- **Menú rápido con clic derecho**: Hablar/grabar, iniciar nueva conversación, alternar idioma (Español/English), conmutar voz TTS, conmutar Modo Gaming, silenciar audio y abrir panel de ajustes.
+- Clic izquierdo o doble clic abre el panel de control.
+
+### H. Modo Gaming y Audio Ducking 🎮
+- Implementado en [src/speak.py](file:///home/oscar/nobara-voice-assistant/src/speak.py).
+- Cuando el asistente comienza a hablar, **reduce automáticamente el volumen de tu juego o Discord al 45%** mediante PipeWire y, al terminar la frase, restaura suavemente el volumen original al 100%. Nunca te perderás una respuesta aunque estés jugando.
+
+### I. Activación Manos Libres (Wake Word) 🗣️
+- Implementado en [src/wakeword.py](file:///home/oscar/nobara-voice-assistant/src/wakeword.py).
+- Impulsado por **openWakeWord** con modelos ONNX 100% locales (*"Hey Jarvis"*, *"Alexa"*, *"Hey Mycroft"*).
+- Consume menos del 1% de CPU, no envía audio a internet y cuenta con protección contra auto-activación mientras el asistente habla.
+
+### J. Cápsula Flotante en Pantalla (Overlay HUD / Dynamic Island) 🔮
+- Implementado en [src/overlay_hud.py](file:///home/oscar/nobara-voice-assistant/src/overlay_hud.py).
+- Cápsula translúcida semitransparente con esquinas redondeadas en la parte superior central de la pantalla:
+  - Onda de sonido animada en directo mientras hablas.
+  - Indicador de estado neon mientras procesa.
+  - Muestra la transcripción y el resultado de la tarea.
+  - **No roba el foco del teclado ni del ratón (`Qt.WindowDoesNotAcceptFocus`)**, permitiéndote seguir jugando o escribiendo sin interrupciones.
+
+### K. Botón de Pánico y Silenciado Inmediato 🛑
+- Ejecutable dedicado: `nobara-voice-assistant-silence` (atajo rápido de escritorio disponible).
+- Si el asistente está leyendo un texto largo y necesitas que pare de golpe (o entra una llamada), silencia la voz en 0.05s y retira la notificación.
 
 ---
 
