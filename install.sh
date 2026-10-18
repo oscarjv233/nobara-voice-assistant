@@ -232,6 +232,7 @@ ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-tray" "$HOME/.local/bin/nobara-v
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-silence" "$HOME/.local/bin/nobara-voice-assistant-silence"
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-wakeword" "$HOME/.local/bin/nobara-voice-assistant-wakeword"
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-hud" "$HOME/.local/bin/nobara-voice-assistant-hud"
+ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant-autostart" "$HOME/.local/bin/nobara-voice-assistant-autostart"
 
 # Enlaces .desktop
 ln -sf "$PROJECT_DIR/desktop/nobara-voice-assistant.desktop" "$HOME/.local/share/applications/nobara-voice-assistant.desktop"
