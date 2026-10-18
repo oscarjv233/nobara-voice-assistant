@@ -37,6 +37,10 @@ VOICES_DIR = os.path.join(PROJECT_DIR, "voices")
 LIVE_STATUS_FILE = "/tmp/nobara_assistant_live.json"
 PID_FILE = "/tmp/nobara_assistant_agent.pid"
 
+# Autostart (KDE/GNOME XDG autostart directory)
+AUTOSTART_DIR = os.path.expanduser("~/.config/autostart")
+AUTOSTART_FILE = os.path.join(AUTOSTART_DIR, "nobara-jarvis-autostart.desktop")
+
 # Import conversation helper
 sys.path.insert(0, os.path.join(PROJECT_DIR, "src"))
 import conversations
@@ -186,6 +190,47 @@ def format_text_as_html(text: str) -> str:
         escaped
     )
     return escaped
+
+# ---------------------------------------------------------------------------
+# Autostart helpers (KDE Plasma 6 / XDG autostart)
+# ---------------------------------------------------------------------------
+def is_autostart_enabled():
+    """Returns True if the Jarvis autostart .desktop file exists and is not hidden."""
+    if not os.path.exists(AUTOSTART_FILE):
+        return False
+    try:
+        with open(AUTOSTART_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+        return "Hidden=true" not in content
+    except Exception:
+        return False
+
+def enable_autostart():
+    """Create/update the XDG autostart .desktop file to launch Jarvis on login."""
+    os.makedirs(AUTOSTART_DIR, exist_ok=True)
+    autostart_bin = os.path.join(PROJECT_DIR, "bin", "nobara-voice-assistant-autostart")
+    content = f"""[Desktop Entry]
+Name=Jarvis AI — Autostart
+Comment=Inicia Jarvis AI (Bandeja + Wake Word + HUD) al arrancar el sistema
+Exec={autostart_bin}
+Icon=nobara-jarvis
+Terminal=false
+Type=Application
+Categories=Utility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+X-KDE-autostart-after=panel
+Hidden=false
+"""
+    with open(AUTOSTART_FILE, "w", encoding="utf-8") as f:
+        f.write(content)
+
+def disable_autostart():
+    """Remove the XDG autostart .desktop file so Jarvis does NOT launch on login."""
+    if os.path.exists(AUTOSTART_FILE):
+        os.remove(AUTOSTART_FILE)
+
+# ---------------------------------------------------------------------------
 
 class SettingsWindow(QMainWindow):
     def __init__(self):
@@ -337,6 +382,17 @@ class SettingsWindow(QMainWindow):
         self.chk_enabled.setFont(font_chk)
         self.chk_enabled.setChecked(self.config.get("ENABLED", "true").lower() == "true")
         card_main_layout.addWidget(self.chk_enabled)
+
+        # Autostart toggle
+        self.chk_autostart = QCheckBox("🚀 Iniciar Jarvis automáticamente con el sistema")
+        self.chk_autostart.setChecked(is_autostart_enabled())
+        self.chk_autostart.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        card_main_layout.addWidget(self.chk_autostart)
+
+        lbl_autostart_hint = QLabel("🔒 Privacidad: Desactiva esta opción si no quieres que Jarvis arranque solo en cada inicio de sesión.")
+        lbl_autostart_hint.setWordWrap(True)
+        lbl_autostart_hint.setStyleSheet("color: #64748b; font-size: 11px; padding-left: 22px;")
+        card_main_layout.addWidget(lbl_autostart_hint)
 
         lang_row = QHBoxLayout()
         lang_label = QLabel("Idioma principal (Reconocimiento y Respuestas):")
@@ -1292,6 +1348,12 @@ class SettingsWindow(QMainWindow):
 
         # Regenerate procesando cue in background with new voice
         threading.Thread(target=lambda: regenerate_procesando_audio(model, speaker), daemon=True).start()
+
+        # Autostart with system
+        if self.chk_autostart.isChecked():
+            enable_autostart()
+        else:
+            disable_autostart()
 
         QMessageBox.information(self, "Configuración Guardada", "Todos los ajustes de Jarvis se han aplicado correctamente.")
 

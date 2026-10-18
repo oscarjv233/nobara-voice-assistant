@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# =============================================================================
+# nobara-voice-assistant-autostart
+# Smart startup script for Jarvis AI - launched by KDE/XDG autostart on login.
+# Reads config/config.env and conditionally starts:
+#   1. Tray icon (always)
+#   2. Wake Word daemon (if WAKE_WORD_ENABLED=true)
+#   3. Overlay HUD (if OVERLAY_HUD_ENABLED=true)
+# =============================================================================
+
+set -euo pipefail
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CONFIG_FILE="$PROJECT_DIR/config/config.env"
+
+# Wait a few seconds for the desktop session to fully initialize
+sleep 5
+
+# Load config
+WAKE_WORD_ENABLED="false"
+OVERLAY_HUD_ENABLED="true"
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    while IFS='=' read -r key val; do
+        # Strip comments and whitespace
+        key="${key%%#*}"; key="${key// /}"
+        val="${val%%#*}"; val="${val//\"/}"; val="${val//\'/}"; val="${val// /}"
+        [[ -z "$key" ]] && continue
+        case "$key" in
+            WAKE_WORD_ENABLED)  WAKE_WORD_ENABLED="$val" ;;
+            OVERLAY_HUD_ENABLED) OVERLAY_HUD_ENABLED="$val" ;;
+        esac
+    done < "$CONFIG_FILE"
+fi
+
+export DISPLAY="${DISPLAY:-:0}"
+export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
+
+# 1. Start Tray Icon (always)
+echo "[Jarvis Autostart] Starting tray icon..."
+"$PROJECT_DIR/bin/nobara-voice-assistant-tray" &
+
+# 2. Start Wake Word daemon (if enabled)
+if [[ "$WAKE_WORD_ENABLED" == "true" ]]; then
+    echo "[Jarvis Autostart] Starting wake word daemon..."
+    "$PROJECT_DIR/bin/nobara-voice-assistant-wakeword" start &
+fi
+
+# 3. Start Overlay HUD (if enabled)
+if [[ "$OVERLAY_HUD_ENABLED" == "true" ]]; then
+    echo "[Jarvis Autostart] Starting overlay HUD..."
+    "$PROJECT_DIR/bin/nobara-voice-assistant-hud" &
+fi
+
+echo "[Jarvis Autostart] Done."
