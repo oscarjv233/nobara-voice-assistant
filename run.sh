@@ -13,7 +13,7 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export DISPLAY="${DISPLAY:-:0}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 export XDG_CURRENT_DESKTOP="KDE"
-export PATH="$HOME/.gemini/antigravity-cli/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+export PATH="$HOME/.local/go/bin:$HOME/go/bin:$HOME/.gemini/antigravity-cli/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 
 case "$1" in
     --install|-i)

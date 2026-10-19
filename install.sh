@@ -217,13 +217,22 @@ echo -e "${GREEN}✓ Reglas de visualización instaladas en ~/.gemini/config/GEM
 # ------------------------------------------------------------------------------
 # 6. Enlaces Ejecutables, Acceso al PATH y Menú de Aplicaciones
 # ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# 5.5 Compilación del Backend en Go
+# ------------------------------------------------------------------------------
 echo ""
-echo -e "${YELLOW}[6/6] Configurando ejecutables y accesos de escritorio...${NC}"
-
-mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications"
+echo -e "${YELLOW}[5.5/6] Compilando el motor backend en Go...${NC}"
+export PATH="$HOME/.local/go/bin:$HOME/go/bin:$PATH"
+if command -v go >/dev/null 2>&1; then
+    (cd "$PROJECT_DIR" && go build -ldflags="-s -w" -o "$PROJECT_DIR/bin/nobara-voice-assistant" ./cmd/assistant)
+    echo -e "${GREEN}✓ Backend en Go compilado correctamente en bin/nobara-voice-assistant.${NC}"
+else
+    echo -e "${RED}Go no encontrado en PATH. Asegúrate de tener Go instalado para compilar el backend.${NC}"
+fi
 
 # Permisos ejecutables
 chmod +x "$PROJECT_DIR/bin/"* "$PROJECT_DIR/src/"*.py "$PROJECT_DIR/"*.sh 2>/dev/null || true
+
 
 # Enlaces simbólicos
 ln -sf "$PROJECT_DIR/bin/nobara-voice-assistant" "$HOME/.local/bin/nobara-voice-assistant"

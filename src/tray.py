@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 """
-Nobara AI Voice Assistant - KDE Plasma System Tray Monitor & Quick Menu.
-Integrates into the system tray next to the Plasma clock with dynamic status icons:
-  🟢 Idle / En reposo
-  🔴 Recording / Grabando voz
-  🔵 Processing / Ejecutando tarea de AGY
-Right-click quick menu allows:
-  - Triggering voice
-  - Resetting conversation session
-  - Toggling English / Spanish
-  - Toggling TTS voice response
-  - Toggling Gaming Audio Ducking
-  - Stopping / Silencing running tasks
-  - Opening the full Control Panel & History
+Nobara AI Voice Assistant - KDE Plasma System Tray Monitor & Menu.
+Provides dynamic status indicators on the system tray:
+- Idle
+- Recording
+- Processing
+
+Interacts directly with the Go backend core binary.
 """
 import sys
 import os
@@ -39,13 +33,6 @@ PID_FILE = "/tmp/nobara_assistant.pid"
 LIVE_STATUS_FILE = "/tmp/nobara_assistant_live.json"
 AGENT_PID_FILE = "/tmp/nobara_assistant_agent.pid"
 
-# Import conversation reset helper
-sys.path.insert(0, os.path.join(PROJECT_DIR, "src"))
-try:
-    import conversations
-except Exception:
-    conversations = None
-
 def load_config():
     config = {
         "ENABLED": "true",
@@ -64,8 +51,6 @@ def load_config():
     return config
 
 def update_config_value(key, value):
-    config = load_config()
-    config[key] = str(value)
     lines = []
     found = False
     if os.path.exists(CONFIG_FILE):
@@ -73,7 +58,7 @@ def update_config_value(key, value):
             for line in f:
                 stripped = line.strip()
                 if stripped.startswith(f"{key}="):
-                    lines.append(f'{key}="{value}"' if isinstance(value, str) and not value.lower() in ("true", "false") else f"{key}={value}")
+                    lines.append(f'{key}="{value}"' if isinstance(value, str) and value.lower() not in ("true", "false") else f"{key}={value}")
                     found = True
                 else:
                     lines.append(line.rstrip("\r\n"))
@@ -85,10 +70,10 @@ def update_config_value(key, value):
 
 def make_tray_icon(state):
     """
-    Renders a crisp 64x64 icon on the fly:
-    - 'idle': Subtle teal/green microphone with dark badge
-    - 'recording': Glowing pulsating red recording circle
-    - 'processing': Neon blue active gear/circle
+    Renders a crisp 64x64 geometric icon:
+    - idle: subtle cyan outline circle
+    - recording: bright crimson solid circle
+    - processing: deep electric blue circle with crosshairs
     """
     pix = QPixmap(64, 64)
     pix.fill(Qt.transparent)
@@ -96,38 +81,23 @@ def make_tray_icon(state):
     painter.setRenderHint(QPainter.Antialiasing)
 
     if state == "recording":
-        # Glowing red badge
-        painter.setBrush(QBrush(QColor(231, 76, 60, 240)))
-        painter.setPen(QPen(QColor(255, 255, 255), 3))
-        painter.drawEllipse(6, 6, 52, 52)
-        # Inner white dot
-        painter.setBrush(QBrush(QColor(255, 255, 255)))
-        painter.setPen(Qt.NoPen)
-        painter.drawEllipse(22, 22, 20, 20)
-
+        painter.setBrush(QBrush(QColor(231, 76, 60)))
+        painter.setPen(QPen(QColor(255, 255, 255), 2))
+        painter.drawEllipse(12, 12, 40, 40)
     elif state == "processing":
-        # Neon blue badge
-        painter.setBrush(QBrush(QColor(41, 128, 185, 240)))
-        painter.setPen(QPen(QColor(93, 173, 226), 3))
-        painter.drawEllipse(6, 6, 52, 52)
-        # Inner rotating accent / gear symbol
-        painter.setPen(QPen(QColor(255, 255, 255), 4, Qt.SolidLine, Qt.RoundCap))
-        painter.drawLine(32, 18, 32, 46)
-        painter.drawLine(18, 32, 46, 32)
-        painter.drawLine(22, 22, 42, 42)
-        painter.drawLine(22, 42, 42, 22)
-
-    else: # idle
-        jarvis_icon = os.path.join(ASSETS_DIR, "nobara-jarvis-64.png")
-        if os.path.exists(jarvis_icon):
-            return QIcon(jarvis_icon)
-
-        # Fallback drawing
-        painter.setBrush(QBrush(QColor(0, 229, 255, 230)))
-        painter.setPen(QPen(QColor(255, 255, 255, 180), 2))
-        painter.drawEllipse(8, 8, 48, 48)
-        painter.end()
-        return QIcon(pix)
+        painter.setBrush(QBrush(QColor(41, 128, 185)))
+        painter.setPen(QPen(QColor(93, 173, 226), 2))
+        painter.drawEllipse(12, 12, 40, 40)
+        painter.setPen(QPen(QColor(255, 255, 255), 3, Qt.SolidLine, Qt.RoundCap))
+        painter.drawLine(32, 20, 32, 44)
+        painter.drawLine(20, 32, 44, 32)
+    else:
+        painter.setBrush(QBrush(QColor(26, 32, 44)))
+        painter.setPen(QPen(QColor(56, 189, 248), 3))
+        painter.drawEllipse(14, 14, 36, 36)
+        painter.setBrush(QBrush(QColor(56, 189, 248)))
+        painter.setPen(Qt.NoPen)
+        painter.drawEllipse(27, 27, 10, 10)
 
     painter.end()
     return QIcon(pix)
@@ -147,14 +117,14 @@ class AssistantTrayApp:
 
         self.current_state = "idle"
         self.tray = QSystemTrayIcon(self.icons["idle"])
-        self.tray.setToolTip("Jarvis AI — Nobara Linux (En reposo)")
+        self.tray.setToolTip("Jarvis AI (En reposo)")
 
         self.tray.activated.connect(self.on_tray_activated)
 
         self.build_menu()
         self.tray.show()
 
-        # Polling timer for assistant state (every 400ms)
+        # State poll timer (every 400ms)
         self.timer = QTimer()
         self.timer.timeout.connect(self.poll_state)
         self.timer.start(400)
@@ -164,58 +134,59 @@ class AssistantTrayApp:
         menu = QMenu()
         menu.setStyleSheet("""
             QMenu {
-                background: #1e222b;
-                color: #e0e0e0;
-                border: 1px solid #3d4452;
-                border-radius: 8px;
-                padding: 6px;
+                background: #161b22;
+                color: #e6edf3;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                padding: 4px;
                 font-family: sans-serif;
+                font-size: 12px;
             }
             QMenu::item {
-                padding: 6px 20px 6px 24px;
+                padding: 6px 18px;
                 border-radius: 4px;
             }
             QMenu::item:selected {
-                background: #2b7bb9;
+                background: #1f6feb;
                 color: #ffffff;
             }
             QMenu::separator {
                 height: 1px;
-                background: #3d4452;
-                margin: 4px 8px;
+                background: #30363d;
+                margin: 4px 6px;
             }
         """)
 
-        # 1. Trigger Voice Shortcut
-        act_trigger = QAction("🎙️ Hablar / Grabar Orden", menu)
+        # Trigger voice action
+        act_trigger = QAction("Hablar / Grabar orden", menu)
         act_trigger.triggered.connect(self.trigger_assistant)
         menu.addAction(act_trigger)
 
-        # 2. Reset conversation
-        act_reset = QAction("➕ Nueva Conversación", menu)
+        # Reset session
+        act_reset = QAction("Nueva conversación", menu)
         act_reset.triggered.connect(self.reset_conversation)
         menu.addAction(act_reset)
 
         menu.addSeparator()
 
-        # 3. Toggle Language
+        # Language toggle
         cur_lang = config.get("ASSISTANT_LANGUAGE", "es")
-        lang_text = "🌐 Idioma: Español 🇪🇸" if cur_lang == "es" else "🌐 Language: English 🇺🇸"
+        lang_text = "Idioma: Español" if cur_lang == "es" else "Language: English"
         self.act_lang = QAction(lang_text, menu)
         self.act_lang.triggered.connect(self.toggle_language)
         menu.addAction(self.act_lang)
 
-        # 4. Toggle Voice Reply
+        # Voice reply toggle
         voice_on = config.get("ENABLE_VOICE_REPLY", "true").lower() == "true"
-        self.act_voice = QAction("🔊 Voz del Asistente (TTS)", menu)
+        self.act_voice = QAction("Voz sintetizada (TTS)", menu)
         self.act_voice.setCheckable(True)
         self.act_voice.setChecked(voice_on)
         self.act_voice.triggered.connect(self.toggle_voice_reply)
         menu.addAction(self.act_voice)
 
-        # 5. Toggle Gaming Ducking
+        # Audio ducking
         ducking_on = config.get("AUDIO_DUCKING", "false").lower() == "true"
-        self.act_ducking = QAction("🎮 Modo Gaming (Audio Ducking)", menu)
+        self.act_ducking = QAction("Atenuación de audio (Gaming)", menu)
         self.act_ducking.setCheckable(True)
         self.act_ducking.setChecked(ducking_on)
         self.act_ducking.triggered.connect(self.toggle_ducking)
@@ -223,13 +194,13 @@ class AssistantTrayApp:
 
         menu.addSeparator()
 
-        # 6. Stop / Panic
-        act_stop = QAction("🛑 Detener Tarea / Silenciar Audio", menu)
+        # Stop action
+        act_stop = QAction("Detener tarea / Silenciar", menu)
         act_stop.triggered.connect(self.panic_stop)
         menu.addAction(act_stop)
 
-        # 7. Open Settings GUI
-        act_settings = QAction("⚙️ Panel de Ajustes e Historial...", menu)
+        # Settings
+        act_settings = QAction("Panel de ajustes e historial", menu)
         font_bold = QFont()
         font_bold.setBold(True)
         act_settings.setFont(font_bold)
@@ -238,8 +209,8 @@ class AssistantTrayApp:
 
         menu.addSeparator()
 
-        # 8. Quit Tray
-        act_quit = QAction("🚪 Salir de la Bandeja", menu)
+        # Quit
+        act_quit = QAction("Salir", menu)
         act_quit.triggered.connect(self.quit_app)
         menu.addAction(act_quit)
 
@@ -257,23 +228,22 @@ class AssistantTrayApp:
         subprocess.Popen([ASSISTANT_BIN], env=env)
 
     def reset_conversation(self):
-        if conversations:
-            conversations.reset_active_session()
-            self.tray.showMessage(
-                "Asistente Nobara",
-                "Nueva conversación iniciada. Contexto limpio.",
-                QSystemTrayIcon.Information,
-                2500
-            )
+        subprocess.run([ASSISTANT_BIN, "conversations", "--reset"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.tray.showMessage(
+            "Asistente Nobara",
+            "Nueva conversación iniciada. Contexto limpio.",
+            QSystemTrayIcon.Information,
+            2000
+        )
 
     def toggle_language(self):
         config = load_config()
         cur_lang = config.get("ASSISTANT_LANGUAGE", "es")
         new_lang = "en" if cur_lang == "es" else "es"
         update_config_value("ASSISTANT_LANGUAGE", new_lang)
-        self.act_lang.setText("🌐 Idioma: Español 🇪🇸" if new_lang == "es" else "🌐 Language: English 🇺🇸")
+        self.act_lang.setText("Idioma: Español" if new_lang == "es" else "Language: English")
         self.tray.showMessage(
-            "Idioma Cambiado / Language Changed",
+            "Idioma actualizado",
             f"El asistente responderá en {'Español' if new_lang == 'es' else 'English'}.",
             QSystemTrayIcon.Information,
             2000
@@ -286,9 +256,7 @@ class AssistantTrayApp:
         update_config_value("AUDIO_DUCKING", "true" if checked else "false")
 
     def panic_stop(self):
-        # Run panic stop
         subprocess.run([ASSISTANT_BIN, "--silence"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # Also kill agent PID if running
         if os.path.exists(AGENT_PID_FILE):
             try:
                 with open(AGENT_PID_FILE, "r") as f:
@@ -308,13 +276,12 @@ class AssistantTrayApp:
         self.app.quit()
 
     def poll_state(self):
-        # 1. Is mic recording?
+        # 1. Recording check
         is_recording = False
         if os.path.exists(PID_FILE):
             try:
                 with open(PID_FILE, "r") as f:
                     pid = int(f.read().strip())
-                # Check if process alive
                 os.kill(pid, 0)
                 is_recording = True
             except Exception:
@@ -324,10 +291,10 @@ class AssistantTrayApp:
             if self.current_state != "recording":
                 self.current_state = "recording"
                 self.tray.setIcon(self.icons["recording"])
-                self.tray.setToolTip("🎙️ Asistente Nobara: Grabando voz...")
+                self.tray.setToolTip("Asistente Nobara: Grabando audio...")
             return
 
-        # 2. Is AGY executing a task?
+        # 2. Execution check
         is_processing = False
         if os.path.exists(LIVE_STATUS_FILE):
             try:
@@ -342,14 +309,14 @@ class AssistantTrayApp:
             if self.current_state != "processing":
                 self.current_state = "processing"
                 self.tray.setIcon(self.icons["processing"])
-                self.tray.setToolTip("⚡ Asistente Nobara: Procesando tarea...")
+                self.tray.setToolTip("Asistente Nobara: Procesando tarea...")
             return
 
-        # 3. Idle
+        # 3. Idle state
         if self.current_state != "idle":
             self.current_state = "idle"
             self.tray.setIcon(self.icons["idle"])
-            self.tray.setToolTip("🟢 Asistente de Voz Nobara (En reposo)")
+            self.tray.setToolTip("Jarvis AI (En reposo)")
 
 def main():
     tray_app = AssistantTrayApp()
