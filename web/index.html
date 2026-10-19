@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jarvis AI — Panel de Control</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Top Bar -->
+    <header class="app-header">
+      <div class="header-branding">
+        <div class="brand-logo">
+          <div class="logo-inner"></div>
+        </div>
+        <div class="brand-text">
+          <h1>Jarvis AI</h1>
+          <span class="brand-subtitle">Nobara Linux Control Panel</span>
+        </div>
+      </div>
+
+      <nav class="header-nav">
+        <button class="nav-btn active" data-tab="conversations">Conversaciones</button>
+        <button class="nav-btn" data-tab="live">Monitor en Vivo</button>
+        <button class="nav-btn" data-tab="audio">Voz y Reconocimiento</button>
+        <button class="nav-btn" data-tab="system">Sistema y Atajos</button>
+      </nav>
+
+      <div class="header-actions">
+        <div id="statusBadge" class="status-badge status-idle">
+          <span class="pulse-dot"></span>
+          <span id="statusText">En reposo</span>
+        </div>
+        <button id="btnSaveGlobal" class="btn btn-primary">Guardar Ajustes</button>
+      </div>
+    </header>
+
+    <!-- Main Content Tabs -->
+    <main class="app-content">
+      <!-- TAB 1: CONVERSACIONES -->
+      <section id="tab-conversations" class="tab-pane active">
+        <div class="conversations-layout">
+          <!-- Left Column: Search & Threads List -->
+          <aside class="threads-sidebar">
+            <div class="threads-header">
+              <div class="search-box">
+                <input type="text" id="convSearch" placeholder="Buscar en historial..." autocomplete="off">
+              </div>
+              <div class="threads-controls">
+                <span id="threadsCount" class="threads-count">Cargando...</span>
+                <div class="threads-buttons">
+                  <button id="btnNewSession" class="btn btn-sm btn-accent">Nueva Sesión</button>
+                  <button id="btnRefreshConv" class="btn btn-sm btn-secondary">Actualizar</button>
+                </div>
+              </div>
+            </div>
+            <div id="threadsList" class="threads-list">
+              <!-- Rendered via JS -->
+            </div>
+          </aside>
+
+          <!-- Right Column: Conversation Viewer -->
+          <section class="conversation-viewer">
+            <div class="viewer-toolbar">
+              <div class="viewer-meta">
+                <h2 id="viewerTitle">Selecciona una conversación</h2>
+                <span id="viewerSub">Historial de órdenes y herramientas</span>
+              </div>
+              <div class="viewer-actions">
+                <button id="btnResumeActive" class="btn btn-sm btn-success" disabled>Fijar como Activa</button>
+                <button id="btnCopyMarkdown" class="btn btn-sm btn-secondary" disabled>Copiar Markdown</button>
+                <button id="btnDeleteConv" class="btn btn-sm btn-danger" disabled>Eliminar</button>
+              </div>
+            </div>
+
+            <!-- Viewer Container with Summary + Turns -->
+            <div id="viewerStream" class="viewer-stream">
+              <div class="empty-state">
+                <div class="empty-icon"></div>
+                <h3>Memoria Neural de Jarvis</h3>
+                <p>Selecciona una conversación para inspeccionar sus órdenes. Los turnos se muestran ordenados desde el más reciente arriba hasta el primero al final.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- TAB 2: MONITOR EN VIVO -->
+      <section id="tab-live" class="tab-pane">
+        <div class="cards-grid">
+          <div class="card card-wide">
+            <div class="card-header">
+              <div class="card-title">Estado de Ejecución del Agente</div>
+              <button id="btnCancelTask" class="btn btn-sm btn-danger" disabled>Detener Tarea</button>
+            </div>
+            <div class="card-body">
+              <div class="task-monitor-box">
+                <div class="task-status-row">
+                  <span id="liveTaskBadge" class="badge badge-success">En reposo (IDLE)</span>
+                  <span id="liveTaskTime" class="meta-text"></span>
+                </div>
+                <div id="liveProgressBar" class="progress-bar-container hidden">
+                  <div class="progress-bar-indeterminate"></div>
+                </div>
+                <div class="info-group">
+                  <label>Última orden recibida</label>
+                  <div id="liveUserText" class="data-value">Ninguna</div>
+                </div>
+                <div class="info-group">
+                  <label>Acción actual</label>
+                  <div id="liveActionText" class="data-value">Esperando comando de voz</div>
+                </div>
+                <div id="liveCommandBox" class="terminal-box hidden">
+                  <code id="liveCommandText"></code>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Gestión de Contexto y Memoria</div>
+            </div>
+            <div class="card-body">
+              <div class="info-group">
+                <label>ID de Sesión Activa</label>
+                <div class="input-with-button">
+                  <input type="text" id="liveActiveID" readonly class="code-input" value="Ninguna">
+                  <button id="btnCopyActiveID" class="btn btn-sm btn-secondary">Copiar</button>
+                </div>
+              </div>
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkContinuous" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Modo Conversación Continua (Mantener memoria entre órdenes)</span>
+                </label>
+              </div>
+              <p class="field-hint">Di "nueva conversación" o "empezar de cero" por voz para reiniciar contexto sin abrir este panel.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Telemetría de Hardware (Fast Path)</div>
+              <button id="btnRefreshHW" class="btn btn-sm btn-secondary">Actualizar</button>
+            </div>
+            <div class="card-body">
+              <div class="hw-metrics">
+                <div class="metric-box">
+                  <span class="metric-label">GPU</span>
+                  <span id="metricGPU" class="metric-value">-- °C</span>
+                </div>
+                <div class="metric-box">
+                  <span class="metric-label">CPU</span>
+                  <span id="metricCPU" class="metric-value">-- °C</span>
+                </div>
+                <div class="metric-box">
+                  <span class="metric-label">Volumen</span>
+                  <span id="metricVol" class="metric-value">-- %</span>
+                </div>
+              </div>
+              <div id="hwStatusMsg" class="hw-status-text">Leyendo sensores locales...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: VOZ Y RECONOCIMIENTO -->
+      <section id="tab-audio" class="tab-pane">
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Idioma Principal</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="selLanguage">Idioma de interacción y respuestas</label>
+                <select id="selLanguage" class="form-control">
+                  <option value="es">Español</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Síntesis de Voz (Piper Neural TTS)</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="selVoice">Modelo de voz local</label>
+                <select id="selVoice" class="form-control">
+                  <option value="es_ES-davefx-medium.onnx:">Hombre - España (DaveFX)</option>
+                  <option value="es_ES-sharvard-medium.onnx:1">Mujer - España (Sharvard F)</option>
+                  <option value="es_ES-sharvard-medium.onnx:0">Hombre - España (Sharvard M)</option>
+                  <option value="es_AR-daniela-high.onnx:">Mujer - Argentina (Daniela High)</option>
+                  <option value="en_US-lessac-medium.onnx:">Woman - English US (Lessac Medium)</option>
+                  <option value="en_US-ryan-medium.onnx:">Man - English US (Ryan Medium)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <div class="slider-header">
+                  <label for="sliderTTSVol">Volumen del habla</label>
+                  <span id="valTTSVol" class="slider-val">35%</span>
+                </div>
+                <div class="slider-row">
+                  <input type="range" id="sliderTTSVol" min="5" max="100" value="35">
+                  <button id="btnTestVoice" class="btn btn-sm btn-secondary">Probar Voz</button>
+                </div>
+              </div>
+
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkVoiceReply" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Responder con voz sintetizada</span>
+                </label>
+              </div>
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkProcessingCue" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Aviso sonoro 'Procesando...' al cortar grabación</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Reconocimiento Local (Whisper y VAD)</div>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="selWhisperModel">Modelo Whisper</label>
+                <select id="selWhisperModel" class="form-control">
+                  <option value="base">base (Rápido ~0.15s)</option>
+                  <option value="small">small (Mayor precisión ~0.4s)</option>
+                </select>
+              </div>
+
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkAutoStop" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Detección de silencio automática (VAD en Go)</span>
+                </label>
+              </div>
+
+              <div id="silenceContainer" class="form-group">
+                <div class="slider-header">
+                  <label for="sliderSilence">Pausa requerida para auto-detener</label>
+                  <span id="valSilence" class="slider-val">1.2 s</span>
+                </div>
+                <input type="range" id="sliderSilence" min="8" max="25" value="12">
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Diagnóstico de Micrófono</div>
+            </div>
+            <div class="card-body">
+              <button id="btnTestMic" class="btn btn-secondary btn-block">Probar Micrófono (3 segundos)</button>
+              <div id="micTestResult" class="test-result-box">
+                Pulsa el botón para probar qué entiende el modelo Whisper.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: SISTEMA Y ATAJOS -->
+      <section id="tab-system" class="tab-pane">
+        <div class="cards-grid">
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Arranque y Automatización</div>
+            </div>
+            <div class="card-body">
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkEnabled" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Habilitar Asistente de Voz Jarvis</span>
+                </label>
+              </div>
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkAutostart">
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Iniciar automáticamente con el sistema (KDE Autostart)</span>
+                </label>
+              </div>
+              <p class="field-hint">Inicia la bandeja del sistema, el overlay y el wake word al iniciar sesión.</p>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Palabra de Activación Manos Libres</div>
+            </div>
+            <div class="card-body">
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkWakeWord">
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Detección continua de palabra de activación</span>
+                </label>
+              </div>
+
+              <div id="wakeContainer" class="form-subgroup">
+                <div class="form-group">
+                  <label for="selWakeModel">Palabra clave</label>
+                  <select id="selWakeModel" class="form-control">
+                    <option value="hey_jarvis">Jarvis / Hey Jarvis</option>
+                    <option value="alexa">Alexa</option>
+                    <option value="hey_mycroft">Hey Mycroft</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <div class="slider-header">
+                    <label for="sliderWakeSens">Sensibilidad</label>
+                    <span id="valWakeSens" class="slider-val">Normal (0.30)</span>
+                  </div>
+                  <input type="range" id="sliderWakeSens" min="15" max="55" value="30">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Rendimiento y Modo Gaming</div>
+            </div>
+            <div class="card-body">
+              <div class="checkbox-group">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkOverlayHUD" checked>
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Cápsula flotante en pantalla (Overlay HUD)</span>
+                </label>
+              </div>
+              <p class="field-hint">Muestra estado y ondas sin robar el foco del teclado ni minimizar juegos.</p>
+
+              <div class="checkbox-group" style="margin-top: 14px;">
+                <label class="switch-label">
+                  <input type="checkbox" id="chkAudioDucking">
+                  <span class="switch-slider"></span>
+                  <span class="switch-text">Audio Ducking: Atenuar música de fondo mientras Jarvis habla</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Global Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

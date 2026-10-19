@@ -138,7 +138,39 @@ func getHardwareStatus(lang string) string {
 	return "Los sensores de hardware están en rangos normales."
 }
 
+// GetHardwareMetrics returns GPU temperature, CPU temperature, PipeWire volume, and summary text.
+func GetHardwareMetrics(lang string) (gpuTemp, cpuTemp, volume int, summary string) {
+	out := runCmd("sensors")
+	var hasGPU, hasCPU bool
+
+	mGPU := reSensorGPU.FindStringSubmatch(out)
+	if len(mGPU) > 1 {
+		if v, err := strconv.ParseFloat(mGPU[1], 64); err == nil {
+			gpuTemp = int(v)
+			hasGPU = true
+		}
+	}
+
+	mCPU := reSensorCPU.FindStringSubmatch(out)
+	if len(mCPU) > 1 {
+		if v, err := strconv.ParseFloat(mCPU[1], 64); err == nil {
+			cpuTemp = int(v)
+			hasCPU = true
+		}
+	}
+
+	volume = getCurrentVolume()
+	summary = getHardwareStatus(lang)
+
+	if !hasGPU && !hasCPU {
+		gpuTemp = 0
+		cpuTemp = 0
+	}
+	return gpuTemp, cpuTemp, volume, summary
+}
+
 // TryMatch executes fast path commands if voice text matches predefined local intents.
+
 func TryMatch(text, lang string) Result {
 	clean := normalizeText(text)
 	isEN := (lang == "en")

@@ -73,12 +73,65 @@ type Turn struct {
 	RawUser string   `json:"raw_user,omitempty"`
 }
 
-// Detail contains complete conversation history.
+// Detail contains complete conversation history and summary.
 type Detail struct {
-	ID    string `json:"id"`
-	Title string `json:"title"`
-	Turns []Turn `json:"turns"`
+	ID      string        `json:"id"`
+	Title   string        `json:"title"`
+	Turns   []Turn        `json:"turns"`
+	Summary DetailSummary `json:"summary"`
 }
+
+// DetailSummary provides high-level executive metrics for a session.
+type DetailSummary struct {
+	ToolsUsed []string `json:"tools_used"`
+	LastUser  string   `json:"last_user"`
+	LastReply string   `json:"last_reply"`
+}
+
+// GetDetail retrieves full turns and computes executive summary for conversation ID.
+func GetDetail(convID string) (*Detail, error) {
+	turns, err := GetTurns(convID)
+	if err != nil {
+		return nil, err
+	}
+
+	title := fmt.Sprintf("Conversación %s", convID[:8])
+	if len(turns) > 0 && turns[0].User != "" {
+		title = turns[0].User
+	}
+
+	toolSet := make(map[string]bool)
+	var toolsUsed []string
+	lastUser := ""
+	lastReply := ""
+
+	for _, turn := range turns {
+		if turn.User != "" {
+			lastUser = turn.User
+		}
+		if turn.Reply != "" {
+			lastReply = turn.Reply
+		}
+		for _, act := range turn.Actions {
+			if act.Name != "" && !toolSet[act.Name] {
+				toolSet[act.Name] = true
+				toolsUsed = append(toolsUsed, act.Name)
+			}
+		}
+	}
+
+	return &Detail{
+		ID:    convID,
+		Title: title,
+		Turns: turns,
+		Summary: DetailSummary{
+			ToolsUsed: toolsUsed,
+			LastUser:  lastUser,
+			LastReply: lastReply,
+		},
+	}, nil
+}
+
 
 func getBrainDir() string {
 	home, _ := os.UserHomeDir()

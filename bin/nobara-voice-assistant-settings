@@ -9,4 +9,9 @@ PROJECT_DIR="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 export DISPLAY="${DISPLAY:-:0}"
 export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-0}"
 
-python3 "$PROJECT_DIR/src/settings_gui.py" "$@"
+if [ -f "$PROJECT_DIR/bin/nobara-voice-assistant" ]; then
+    exec "$PROJECT_DIR/bin/nobara-voice-assistant" gui "$@"
+else
+    exec python3 "$PROJECT_DIR/src/settings_gui.py" "$@"
+fi
+

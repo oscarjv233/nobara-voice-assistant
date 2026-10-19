@@ -18,6 +18,7 @@ import (
 	"nobara-voice-assistant/internal/config"
 	"nobara-voice-assistant/internal/conversations"
 	"nobara-voice-assistant/internal/fastpath"
+	"nobara-voice-assistant/internal/server"
 	"nobara-voice-assistant/internal/tts"
 )
 
@@ -101,6 +102,13 @@ func main() {
 		switch os.Args[1] {
 		case "--silence", "--stop", "-s", "silence", "stop":
 			stopSpeechAndTasks()
+			os.Exit(0)
+
+		case "gui", "web", "settings", "panel":
+			if err := server.StartAndOpenUI(projectDir); err != nil {
+				fmt.Fprintf(os.Stderr, "Error starting UI: %v\n", err)
+				os.Exit(1)
+			}
 			os.Exit(0)
 
 		case "record-vad":
