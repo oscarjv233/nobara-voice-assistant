@@ -137,10 +137,18 @@ func openDesktopWindow(appURL string) error {
 	}
 
 	if err == nil {
-		cmd := exec.Command("kstart", "--", braveBin,
+		cmd := exec.Command("kstart",
+			"--desktopfile", "nobara-voice-assistant-settings.desktop",
+			"--",
+			braveBin,
 			fmt.Sprintf("--app=%s", appURL),
+			"--class=nobara-voice-assistant-settings",
+			"--name=nobara-voice-assistant-settings",
+			"--app-id=nobara-voice-assistant-settings",
 			"--window-size=1040,760",
 			"--user-data-dir=/tmp/nobara_assistant_gui_profile",
+			"--disable-features=Translate,BraveTranslate",
+			"--lang=es-ES",
 		)
 		cmd.Env = env
 		return cmd.Start()

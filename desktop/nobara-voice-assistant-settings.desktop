@@ -10,3 +10,4 @@ Terminal=false
 Type=Application
 Categories=Settings;HardwareSettings;Utility;
 Keywords=jarvis;ai;voice;settings;config;antigravity;nobara;
+StartupWMClass=nobara-voice-assistant-settings
